@@ -279,6 +279,7 @@ async function loadModule(key){
  try{
   const data=await fetchTable(key);
   if(id!==loadSerial ||section!==key)return;
+  if(key==='atleti'){try{displayLookups.set('pacchetti_uscite',await fetchTable('pacchetti_uscite',1000));}catch{displayLookups.delete('pacchetti_uscite');}}
   rows7=data;renderDataTable();
   if(canCreate(m))await buildForm(key,null);
  }catch(e){if(id!==loadSerial)return;rows7=[];renderDataTable();$('count7').textContent='Errore nella lettura';notify('Impossibile leggere «'+m.label+'»: '+e.message,'error')}
@@ -307,10 +308,12 @@ function renderDataTable(){
  const fields=m.fields.filter(f=>!hiddenReadFields.has(f.nome));
  const shownFields=(fields.length?fields:m.fields).slice(0,9);
  for(const f of shownFields)hrow.append(text('th',fieldTitle(f.nome)));
+ if(t==='atleti') hrow.append(text('th','Uscite acquistate'));
  if(canEdit(t)||canDelete(t))hrow.append(text('th','Azioni'));
  thead.append(hrow);tbl.append(thead);const tbody=document.createElement('tbody');
  for(const rec of filtered){const row=document.createElement('tr');for(const f of shownFields){const td=text('td',prettyValue(t,f.nome,rec[f.nome]));td.title=String(rec[f.nome]??'');row.append(td)}
-  if(canEdit(t)||canDelete(t)){
+if(t==='atleti'){const pacchetti=displayLookups.get('pacchetti_uscite');const totale=pacchetti?pacchetti.filter(p=>p.atleta_id===rec.id).reduce((somma,p)=>somma+Number(p.uscite_acquistate||0),0):'—';row.append(text('td',totale));}
+                            if(canEdit(t)||canDelete(t)){
    const td=document.createElement('td');
    if(canEdit(t)&&m.pk.length===1){const edit=text('button','Modifica','cellBtn7');edit.type='button';edit.onclick=()=>void buildForm(t,rec);td.append(edit)}
    if(canDelete(t)){const del=text('button','Elimina','cellBtn7 danger');del.type='button';del.onclick=()=>void deleteRecord(t,rec);td.append(del)}
