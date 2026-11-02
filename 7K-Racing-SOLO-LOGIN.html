@@ -159,6 +159,12 @@ function renderNav(){
   if(prev!==m.group){prev=m.group;nav.append(text('h3',prev))}
   const b=text('button',m.label);b.type='button';b.className=section===key?'selected7':'';b.onclick=()=>void openSection(key);nav.append(b);
  }
+ if(role==='segreteria'){
+  const invito=text('button','✉ Invita nuovo utente');
+  invito.type='button';
+  invito.onclick=()=>alert('Modulo inviti in preparazione');
+  nav.append(invito);
+}
 }
 async function loadProfile(){
  if(!session?.user?.id)throw Error('Sessione senza utente autenticato');
