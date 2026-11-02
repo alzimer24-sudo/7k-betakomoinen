@@ -166,7 +166,76 @@ function renderNav(){
   nav.append(invito);
 }
 }
-async function loadProfile(){
+async function apriModuloInvito() {
+  if (role !== 'segreteria' || !session?.access_token) {
+    alert('Operazione riservata alla Segreteria');
+    return;
+  }
+
+  const nome = prompt('Nome del nuovo utente:');
+  if (nome === null) return;
+
+  const cognome = prompt('Cognome del nuovo utente:');
+  if (cognome === null) return;
+
+  const email = prompt('Email del nuovo utente:');
+  if (email === null) return;
+
+  const scelta = prompt(
+    'Ruolo:\n1 = Genitore\n2 = Allenatore\n3 = Direttivo'
+  );
+  if (scelta === null) return;
+
+  const ruoli = {
+    '1': 'genitore',
+    '2': 'allenatore',
+    '3': 'direttivo'
+  };
+
+  const ruolo = ruoli[scelta.trim()];
+
+  if (!nome.trim() || !cognome.trim() ||
+      !email.trim() || !ruolo) {
+    alert('Controlla i dati inseriti e il ruolo scelto.');
+    return;
+  }
+
+  if (!confirm('Confermi l’invio dell’invito a ' + email.trim() + '?')) {
+    return;
+  }
+
+  try {
+    const risposta = await fetch(
+      PUBLIC_SUPABASE_URL + '/functions/v1/invita-utente',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': PUBLIC_SUPABASE_KEY,
+          'Authorization': 'Bearer ' + session.access_token
+        },
+        body: JSON.stringify({
+          nome: nome.trim(),
+          cognome: cognome.trim(),
+          email: email.trim().toLowerCase(),
+          ruolo: ruolo
+        })
+      }
+    );
+
+    const risultato = await risposta.json();
+
+    if (!risposta.ok) {
+      throw new Error(risultato.errore || risultato.error || 'Invito non riuscito');
+    }
+
+    alert('Invito inviato a ' + email.trim());
+
+  } catch (errore) {
+    alert('Errore durante l’invito: ' + errore.message);
+  }
+}
+ async function loadProfile(){
  if(!session?.user?.id)throw Error('Sessione senza utente autenticato');
  const data=await rest('profili',{filter:readQuery({select:'id,ruolo',id:'eq.'+session.user.id,limit:1})});
  const p=data?.[0];if(!p || !ROLES[p.ruolo])throw Error('Account senza ruolo valido nella tabella profili.');
