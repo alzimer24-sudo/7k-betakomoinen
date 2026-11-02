@@ -162,7 +162,7 @@ function renderNav(){
  if(role==='segreteria'){
   const invito=text('button','✉ Invita nuovo utente');
   invito.type='button';
-  invito.onclick=()=>alert('Modulo inviti in preparazione');
+  invito.onclick=()=>apriModuloInvito();
   nav.append(invito);
 }
 }
