@@ -344,6 +344,17 @@ function renderNav(){
  const nav=$('nav7');nav.replaceChildren();const home=text('button','⌂  Dashboard');home.className=section==='dashboard'?'selected7':'';home.onclick=()=>void openSection('dashboard');nav.append(home);
  let prev=null;
  for(const [key,m] of legalModules()){
+   
+if(role==='genitore' && ![
+  'atleti',
+  'allenamenti',
+  'risposte_allenamenti',
+  'presenze_allenamenti',
+  'crediti_residui',
+  'materiali',
+  'comunicazioni'
+].includes(key)) continue;
+
   if(prev!==m.group){prev=m.group;nav.append(text('h3',prev))}
   const b=text('button',m.label);b.type='button';b.className=section===key?'selected7':'';b.onclick=()=>void openSection(key);nav.append(b);
  }
