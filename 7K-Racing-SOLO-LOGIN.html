@@ -141,7 +141,7 @@ function fieldDescription(t,f){const map={'stagioni.archiviata':'Archiviare una 
 const meaningful=(f)=>f.length>27?f.slice(0,24)+'…':f;
 function formatLabel(t,r){
  if(t==='atleti')return `${r.cognome||''} ${r.nome||''}`.trim();
- if(t==='profili')return `${ROLES[r.ruolo]||r.ruolo||'Utente'} · ${String(r.id||'').slice(0,8)}…`;
+ if(t==='profili')return [r.nome,r.cognome].filter(Boolean).join(' ').trim() || `${ROLES[r.ruolo]||r.ruolo||'Utente'} · ${String(r.id||'').slice(0,8)}…`; `${ROLES[r.ruolo]||r.ruolo||'Utente'} · ${String(r.id||'').slice(0,8)}…`;
  if(t==='allenamenti')return `${r.data||''} ${String(r.ora||'').slice(0,5)} · ${r.luogo||''}`;
  if(t==='rate_quote')return `Rata ${r.numero_rata} · € ${r.importo}`;
  if(t==='quote_atleti')return `${r.descrizione||'Quota'} · € ${r.importo_totale}`;
