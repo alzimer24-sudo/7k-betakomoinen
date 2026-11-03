@@ -241,6 +241,7 @@ const [assegnazioni,allenamenti,risposte,atleti,presenze]=await Promise.all([
     if(prossimo)scelta.value=prossimo.id;
 
     const lista=document.createElement('div');
+   lista.style.marginTop='20px';
 
     function aggiornaLista(){
       lista.replaceChildren();
