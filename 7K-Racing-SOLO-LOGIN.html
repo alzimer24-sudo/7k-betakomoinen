@@ -287,9 +287,135 @@ function moduleAdvice(t){
  profili:'I profili sono gestiti a livello Supabase; nessun cambio di ruolo dal browser.'
  };return instructions[t]||'Inserimenti, modifiche e cancellazioni disponibili in base al ruolo e alle policy RLS di Supabase. Le operazioni sono reali; usa dati fittizi durante il collaudo.'
 }
-async function loadModule(key){
+
+async function loadAdesioniGenitore(){
+  const box=$('table7');
+  box.replaceChildren();
+  $('count7').textContent='Caricamento adesioni...';
+  $('limitNotice7').textContent='';
+
+  try{
+    const [legami,atleti,allenamenti,risposte]=await Promise.all([
+      fetchTable('genitori_atleti',500),
+      fetchTable('atleti',500),
+      fetchTable('allenamenti',500),
+      fetchTable('risposte_allenamenti',500)
+    ]);
+
+    if(section!=='risposte_allenamenti'||role!=='genitore')return;
+
+    const miei=new Set(
+      legami.filter(x=>x.genitore_id===session.user.id)
+            .map(x=>x.atleta_id)
+    );
+
+    const oggi=new Intl.DateTimeFormat('sv-SE',{
+      timeZone:'Europe/Rome',
+      year:'numeric',month:'2-digit',day:'2-digit'
+    }).format(new Date());
+
+    let totale=0;
+
+    for(const a of allenamenti.sort((x,y)=>x.data.localeCompare(y.data))){
+      if(a.data<oggi)continue;
+
+      for(const atleta of atleti.filter(x=>
+        miei.has(x.id)&&x.gruppo_id===a.gruppo_id
+      )){
+        totale++;
+
+        const card=text('div','','stat7');
+        card.style.marginBottom='12px';
+        card.append(text('strong',formatLabel('allenamenti',a)));
+        card.append(text('p',formatLabel('atleti',atleta)));
+
+        const esistente=risposte.find(x=>
+          x.allenamento_id===a.id&&x.atleta_id===atleta.id
+        );
+
+        const stato=text('p','Risposta: '+(
+          esistente?.risposta==='partecipo'?'Partecipo':
+          esistente?.risposta==='non_partecipo'?'Non partecipo':
+          'Da confermare'
+        ));
+        card.append(stato);
+
+        const si=text('button','✅ Partecipo');
+        const no=text('button','❌ Non partecipo');
+        si.type=no.type='button';
+        si.style.marginRight='8px';
+
+        const chiuso=a.data<=oggi;
+        si.disabled=no.disabled=chiuso;
+
+        if(chiuso){
+          card.append(text('p','Adesioni chiuse'));
+        }
+
+        async function salva(risposta){
+          si.disabled=no.disabled=true;
+          try{
+            const vecchia=risposte.find(x=>
+              x.allenamento_id===a.id&&x.atleta_id===atleta.id
+            );
+
+            const salvati=vecchia
+              ?await rest('risposte_allenamenti',{
+                method:'PATCH',
+                filter:readQuery({id:'eq.'+vecchia.id}),
+                body:{risposta}
+              })
+              :await rest('risposte_allenamenti',{
+                method:'POST',
+                body:{
+                  allenamento_id:a.id,
+                  atleta_id:atleta.id,
+                  genitore_id:session.user.id,
+                  risposta
+                }
+              });
+
+            if(!salvati?.length)throw Error('Salvataggio non confermato');
+
+            if(vecchia)Object.assign(vecchia,salvati[0]);
+            else risposte.push(salvati[0]);
+
+            stato.textContent='Risposta salvata: '+
+              (risposta==='partecipo'?'Partecipo':'Non partecipo');
+          }catch(e){
+            notify('Impossibile salvare la risposta: '+e.message,'error');
+          }finally{
+            si.disabled=no.disabled=chiuso;
+          }
+        }
+
+        si.onclick=()=>void salva('partecipo');
+        no.onclick=()=>void salva('non_partecipo');
+        card.append(si,no);
+        box.append(card);
+      }
+    }
+
+    $('count7').textContent=totale+' adesioni disponibili';
+    if(!totale)box.append(text('p',
+      'Nessun allenamento disponibile per gli atleti collegati.'
+    ));
+  }catch(e){
+    $('count7').textContent='Errore caricamento';
+    notify('Impossibile caricare le adesioni: '+e.message,'error');
+  }
+}
+
+ async function loadModule(key){
  const id=++loadSerial;const m=SCHEMA[key];if(!m)return;
  $('moduleGroup7').textContent=m.group;$('moduleName7').textContent=m.label;$('moduleHelp7').textContent=moduleAdvice(key);
+ 
+if(key==='risposte_allenamenti' && role==='genitore'){
+  show('createDetails7',false);
+  await loadAdesioniGenitore();
+  return;
+}
+
  show('createDetails7',canCreate(m));$('createDetails7').open=false;
  $('count7').textContent='Caricamento…';$('table7').replaceChildren();$('limitNotice7').textContent='';
  try{
