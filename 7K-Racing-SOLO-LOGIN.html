@@ -974,20 +974,17 @@ if(role==='genitore'){
   try{
     
 
-
 const [
   legami,atleti,pacchetti,usciteUsate,
-  allenamenti,risposte,presenze
+  allenamenti,risposte
 ]=await Promise.all([
   fetchTable('genitori_atleti',500),
   fetchTable('atleti',500),
   fetchTable('pacchetti_uscite',500),
   fetchTable('uscite_utilizzate',500),
   fetchTable('allenamenti',500),
-  fetchTable('risposte_allenamenti',500),
-  fetchTable('presenze_allenamenti',500)
+  fetchTable('risposte_allenamenti',500)
 ]);
-
 
 
 
@@ -1137,44 +1134,6 @@ contenuto.append(schedaAllenamenti);
 
 
     }
-    
-const presenzeFiglio=presenze.filter(
-  p=>p.atleta_id===figlio.id
-);
-
-const presenti=presenzeFiglio.filter(
-  p=>p.presente===true
-).length;
-
-const assenti=presenzeFiglio.filter(
-  p=>p.presente===false
-).length;
-
-const schedaPresenze=document.createElement('section');
-schedaPresenze.className='scheda-riepilogo7';
-
-const titoloPresenze=document.createElement('h3');
-titoloPresenze.textContent='✅ Presenze allenamenti';
-
-const datiPresenze=document.createElement('div');
-datiPresenze.className='contenuto';
-
-if(presenzeFiglio.length===0){
-  datiPresenze.textContent='Nessuna presenza ancora registrata.';
-}else{
-  const percentualePresenze=Math.round(
-    presenti/presenzeFiglio.length*100
-  );
-
-  datiPresenze.textContent=
-    '✅ Presenti: '+presenti+
-    ' | ❌ Assenti: '+assenti+
-    ' | Frequenza: '+percentualePresenze+'%';
-}
-
-schedaPresenze.append(titoloPresenze,datiPresenze);
-contenuto.append(schedaPresenze);
-}
   }catch(e){
     contenuto.textContent='Errore caricamento: '+e.message;
   }
