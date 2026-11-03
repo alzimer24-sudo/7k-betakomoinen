@@ -1361,7 +1361,8 @@ function renderDataTable(){
  if(t==='atleti') hrow.append(text('th','Uscite acquistate'));
  if(canEdit(t)||canDelete(t))hrow.append(text('th','Azioni'));
  thead.append(hrow);tbl.append(thead);const tbody=document.createElement('tbody');
- for(const rec of filtered){const row=document.createElement('tr');for(const f of shownFields){const td=text('td',prettyValue(t,f.nome,rec[f.nome]));td.title=String(rec[f.nome]??'');row.append(td)}
+ for(const rec of filtered){const row=document.createElement('tr');for(const f of shownFields){const td=text('td',prettyValue(t,f.nome,rec[f.nome]));td.title=String(rec[f.nome]??''); if(t==='materiali' && f.nome==='url'){   const videoUrl=String(rec[f.nome]??'');   if(videoUrl.startsWith('https://')){     const link=document.createElement('a');     link.href=videoUrl;     link.target='_blank';     link.rel='noopener noreferrer';     link.textContent='▶ Guarda video';     td.replaceChildren(link);   } }
+row.append(td)}
 if(t==='atleti'){const pacchetti=displayLookups.get('pacchetti_uscite');const totale=pacchetti?pacchetti.filter(p=>p.atleta_id===rec.id).reduce((somma,p)=>somma+Number(p.uscite_acquistate||0),0):'—';row.append(text('td',totale));}
                             if(canEdit(t)||canDelete(t)){
    const td=document.createElement('td');
