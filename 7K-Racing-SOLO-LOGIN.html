@@ -421,6 +421,14 @@ async function populateForeign(t,field,keepValue){
  if(fixed){ctl.replaceChildren();const o=document.createElement('option');o.value=fixed;o.textContent='Utente collegato';ctl.append(o);ctl.value=fixed;return;}
  ctl.replaceChildren();const blank=document.createElement('option');blank.value='';blank.textContent='— Seleziona —';ctl.append(blank);
  let records=[];try{records=await getLookup(target);displayLookups.set(target,records);}catch(e){blank.textContent='Non accessibile: '+e.message.slice(0,65);return;}
+ if(role==='allenatore' && t==='allenamenti' && field==='gruppo_id'){
+  try{
+    displayLookups.set('allenatori_gruppi',await getLookup('allenatori_gruppi'));
+  }catch(e){
+    blank.textContent='Assegnazioni non accessibili: '+e.message.slice(0,65);
+    return;
+  }
+}
  records=restrictLookups(t,field,records);
  for(const r of records){const o=document.createElement('option');o.value=r.id;o.textContent=formatLabel(target,r);ctl.append(o)}
  if(keepValue!==null&&keepValue!==undefined){
