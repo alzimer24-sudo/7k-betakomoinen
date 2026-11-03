@@ -165,8 +165,120 @@ function renderNav(){
   invito.onclick=()=>apriModuloInvito();
   nav.append(invito);
 }
+
+if(role==='allenatore'){
+  const appello=text('button','☑️ Fai appello');
+  appello.type='button';
+  appello.onclick=()=>void apriAppello();
+  nav.append(appello);
 }
-async function apriModuloInvito() {
+}
+
+async function apriAppello(){
+  if(role!=='allenatore')return;
+
+  const id=++loadSerial;
+  section='appello7';
+  renderNav();
+
+  show('dashboard7',false);
+  show('moduleBox7',true);
+  show('createDetails7',false);
+
+  $('moduleGroup7').textContent='ALLENAMENTI';
+  $('moduleName7').textContent='Fai appello';
+  $('moduleHelp7').textContent='Elenco degli atleti che hanno confermato la partecipazione.';
+  $('search7').value='';
+  $('table7').replaceChildren();
+  $('count7').textContent='Caricamento...';
+  $('limitNotice7').textContent='';
+
+  try{
+    const [assegnazioni,allenamenti,risposte,atleti]=await Promise.all([
+      fetchTable('allenatori_gruppi',500),
+      fetchTable('allenamenti',500),
+      fetchTable('risposte_allenamenti',500),
+      fetchTable('atleti',500)
+    ]);
+
+    if(id!==loadSerial||section!=='appello7')return;
+
+    const gruppi=new Set(
+      assegnazioni
+        .filter(x=>x.allenatore_id===session.user.id)
+        .map(x=>x.gruppo_id)
+    );
+
+    const disponibili=allenamenti
+      .filter(a=>gruppi.has(a.gruppo_id))
+      .sort((a,b)=>a.data.localeCompare(b.data));
+
+    const box=$('table7');
+    if(!disponibili.length){
+      $('count7').textContent='Nessun allenamento assegnato';
+      return;
+    }
+
+    const scelta=document.createElement('select');
+    for(const a of disponibili){
+      const op=document.createElement('option');
+      op.value=a.id;
+      op.textContent=formatLabel('allenamenti',a);
+      scelta.append(op);
+    }
+
+    const oggi=new Intl.DateTimeFormat('sv-SE',{
+      timeZone:'Europe/Rome',
+      year:'numeric',
+      month:'2-digit',
+      day:'2-digit'
+    }).format(new Date());
+
+    const prossimo=disponibili.find(a=>a.data>=oggi);
+    if(prossimo)scelta.value=prossimo.id;
+
+    const lista=document.createElement('div');
+
+    function aggiornaLista(){
+      lista.replaceChildren();
+      const a=disponibili.find(x=>x.id===scelta.value);
+
+      const confermati=risposte.filter(r=>
+        r.allenamento_id===a.id &&
+        r.risposta==='partecipo'
+      );
+
+      let totale=0;
+      for(const r of confermati){
+        const atleta=atleti.find(x=>
+          x.id===r.atleta_id &&
+          x.gruppo_id===a.gruppo_id
+        );
+
+        if(!atleta)continue;
+
+        lista.append(text('p','☑ '+formatLabel('atleti',atleta)));
+        totale++;
+      }
+
+      $('count7').textContent=totale+' atleti confermati';
+
+      if(!totale){
+        lista.append(text('p','Nessun atleta confermato visibile.'));
+      }
+    }
+
+    scelta.onchange=aggiornaLista;
+    box.append(scelta,lista);
+    aggiornaLista();
+
+  }catch(e){
+    $('count7').textContent='Errore caricamento';
+    notify('Impossibile caricare la lista: '+e.message,'error');
+  }
+}
+
+ async function apriModuloInvito() {
   if (role !== 'segreteria' || !session?.access_token) {
     alert('Operazione riservata alla Segreteria');
     return;
