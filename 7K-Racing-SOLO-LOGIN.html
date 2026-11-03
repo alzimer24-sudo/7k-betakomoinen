@@ -956,6 +956,53 @@ async function openSection(key){
 }
 async function loadDashboard(){
  const root=$('stats7');root.replaceChildren();
+  
+if(role==='genitore'){
+  const scheda=document.createElement('section');
+  scheda.className='scheda-riepilogo7';
+
+  const titolo=document.createElement('h3');
+  titolo.textContent='👤 Mio figlio';
+
+  const contenuto=document.createElement('div');
+  contenuto.className='contenuto';
+  contenuto.textContent='Caricamento...';
+
+  scheda.append(titolo,contenuto);
+  root.append(scheda);
+
+  try{
+    const [legami,atleti]=await Promise.all([
+      fetchTable('genitori_atleti',500),
+      fetchTable('atleti',500)
+    ]);
+
+    const miei=new Set(
+      legami
+        .filter(x=>x.genitore_id===session.user.id)
+        .map(x=>x.atleta_id)
+    );
+
+    const figli=atleti.filter(x=>miei.has(x.id));
+    contenuto.replaceChildren();
+
+    if(!figli.length){
+      contenuto.textContent='Nessun atleta collegato.';
+    }
+
+    for(const figlio of figli){
+      const riga=document.createElement('p');
+      riga.textContent=
+        [figlio.nome,figlio.cognome].filter(Boolean).join(' ');
+      contenuto.append(riga);
+    }
+  }catch(e){
+    contenuto.textContent='Errore caricamento: '+e.message;
+  }
+
+  return;
+}
+
  const chosen=[['stagioni','Stagioni'],['gruppi','Gruppi'],['atleti','Atleti'],['allenamenti','Allenamenti'],['uscite','Trasferte'],['comunicazioni','Comunicazioni']];
  await Promise.all(chosen.filter(([t])=>SCHEMA[t].read.includes(role)).map(async([t,label])=>{
   const p=text('div','', 'stat7');p.append(text('span',label));
