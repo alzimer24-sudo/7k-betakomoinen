@@ -265,15 +265,6 @@ async function loadDashboard(){
       const avviso=text('div','','stat7');
       avviso.append(text('strong','⚠️ CERTIFICATI MEDICI DA CONTROLLARE: '+certificati.length));
 
-      for(const c of certificati){
-        const giorni=Number(c.giorni_mancanti);
-        const stato=giorni<0?'SCADUTO da '+(-giorni)+' giorni':
-          giorni===0?'SCADE OGGI':'Mancano '+giorni+' giorni';
-
-        avviso.append(text('div',
-          (c.cognome||'')+' '+(c.nome||'')+
-          ' | Scadenza: '+c.data_scadenza+' | '+stato));
-      }
       root.append(avviso);
     }
   }catch(e){
