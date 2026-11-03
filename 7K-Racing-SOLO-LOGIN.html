@@ -300,7 +300,10 @@ async function ensureFresh(){
  storeSession({...s,expires_at:Date.now()+1000*(s.expires_in||3600)});
 }
 async function rest(table,{method='GET',filter='',body=null}={}){
- if(!SCHEMA[table])throw Error('Tabella non prevista nello schema caricato');
+ 
+if(!SCHEMA[table] && table!=='adesioni_uscite_extra')
+  throw Error('Tabella non prevista nello schema caricato');
+
  await ensureFresh();
  const base='/rest/v1/'+encodeURIComponent(table);
  const path=base+(filter?'?'+filter:'');
@@ -351,7 +354,16 @@ function renderNav(){
   nav.append(invito);
 }
 
+if(role==='genitore'){
+  const extra=text('button','🏔️ Trasferte extra');
+  extra.type='button';
+  extra.className=section==='trasferte_extra7'?'selected7':'';
+  extra.onclick=()=>void apriTrasferteExtraGenitore();
+  nav.append(extra);
+}
+
 if(role==='allenatore'){
+
   const appello=text('button','☑️ Fai appello');
   appello.type='button';
   appello.onclick=()=>void apriAppello();
@@ -359,6 +371,246 @@ if(role==='allenatore'){
 }
 }
 
+
+
+async function apriTrasferteExtraGenitore(){
+  if(role!=='genitore')return;
+
+  const id=++loadSerial;
+  section='trasferte_extra7';
+  renderNav();
+
+  show('dashboard7',false);
+  show('moduleBox7',true);
+  show('createDetails7',false);
+
+  $('moduleGroup7').textContent='TRASFERTE';
+  $('moduleName7').textContent='Trasferte extra';
+  $('moduleHelp7').textContent='Partecipazione e richiesta trasporto.';
+  $('search7').value='';
+  $('table7').replaceChildren();
+  $('count7').textContent='Caricamento...';
+  $('limitNotice7').textContent='';
+
+  try{
+    
+const [uscite,legami,atleti,adesioni]=await Promise.all([
+  fetchTable('uscite',500),
+  fetchTable('genitori_atleti',500),
+  fetchTable('atleti',500),
+  fetchTable('adesioni_uscite_extra',500)
+]);
+
+    if(id!==loadSerial || section!=='trasferte_extra7')return;
+
+    const miei=new Set(
+      legami.filter(x=>x.genitore_id===session.user.id)
+            .map(x=>x.atleta_id)
+    );
+
+    const oggi=new Intl.DateTimeFormat('sv-SE',{
+      timeZone:'Europe/Rome',
+      year:'numeric',month:'2-digit',day:'2-digit'
+    }).format(new Date());
+
+    let totale=0;
+
+    for(const uscita of uscite
+      .filter(x=>x.data_uscita>=oggi)
+      .sort((a,b)=>a.data_uscita.localeCompare(b.data_uscita))){
+
+      for(const atleta of atleti.filter(x=>miei.has(x.id))){
+        const card=text('div','','stat7');
+        card.style.marginBottom='12px';
+
+        card.append(text('strong',
+          uscita.data_uscita+' · '+uscita.titolo));
+
+        card.append(text('p',
+          uscita.luogo+' · '+formatLabel('atleti',atleta)));
+
+        
+const adesione=adesioni.find(r=>
+  r.uscita_id===uscita.id &&
+  r.atleta_id===atleta.id
+);
+
+card.dataset.risposta=adesione?.risposta||'';
+
+const scelte=document.createElement('div');
+scelte.style.marginTop='12px';
+
+const si=text('button','✓ Partecipo');
+const no=text('button','✕ Non partecipo');
+
+si.type='button';
+no.type='button';
+
+si.style.marginRight='10px';
+
+function aggiornaScelte(){
+  si.style.background=card.dataset.risposta==='partecipo'?'#dc001b':'white';
+  si.style.color=card.dataset.risposta==='partecipo'?'white':'black';
+  no.style.background=card.dataset.risposta==='non_partecipo'?'#dc001b':'white';
+  no.style.color=card.dataset.risposta==='non_partecipo'?'white':'black';
+}
+
+si.onclick=()=>{
+  card.dataset.risposta='partecipo';
+  aggiornaScelte();
+};
+
+no.onclick=()=>{
+  card.dataset.risposta='non_partecipo';
+  aggiornaScelte();
+};
+
+aggiornaScelte();
+scelte.append(si,no);
+card.append(scelte);
+
+const trasportoBox=document.createElement('div');
+trasportoBox.style.marginTop='12px';
+
+trasportoBox.append(text('p','Utilizza il trasporto del club?'));
+
+const pulmino=text('button','🚌 Sì, pulmino');
+const auto=text('button','🚗 No, mezzi propri');
+
+pulmino.type='button';
+auto.type='button';
+
+pulmino.style.marginRight='10px';
+
+card.dataset.trasporto=
+  adesione?.usa_trasporto===true?'si':
+  adesione?.usa_trasporto===false?'no':'';
+
+function aggiornaTrasporto(){
+  trasportoBox.style.display=
+    card.dataset.risposta==='partecipo'?'block':'none';
+
+  pulmino.style.background=
+    card.dataset.trasporto==='si'?'#dc001b':'white';
+  pulmino.style.color=
+    card.dataset.trasporto==='si'?'white':'black';
+
+  auto.style.background=
+    card.dataset.trasporto==='no'?'#dc001b':'white';
+  auto.style.color=
+    card.dataset.trasporto==='no'?'white':'black';
+}
+
+pulmino.onclick=()=>{
+  card.dataset.trasporto='si';
+  aggiornaTrasporto();
+};
+
+auto.onclick=()=>{
+  card.dataset.trasporto='no';
+  aggiornaTrasporto();
+};
+
+si.addEventListener('click',aggiornaTrasporto);
+
+no.addEventListener('click',()=>{
+  card.dataset.trasporto='';
+  aggiornaTrasporto();
+});
+
+trasportoBox.append(pulmino,auto);
+card.append(trasportoBox);
+aggiornaTrasporto();
+        
+const salvaExtra=text('button','💾 Salva risposta');
+salvaExtra.type='button';
+salvaExtra.style.marginTop='14px';
+
+salvaExtra.onclick=async()=>{
+  const risposta=card.dataset.risposta;
+  const trasporto=card.dataset.trasporto;
+
+  if(!risposta){
+    alert('Scegli Partecipo oppure Non partecipo.');
+    return;
+  }
+
+  if(risposta==='partecipo' && !trasporto){
+    alert('Indica se utilizzi il pulmino.');
+    return;
+  }
+
+  const dati={
+    risposta:risposta,
+    usa_trasporto:risposta==='non_partecipo'
+      ?null
+      :trasporto==='si',
+    aggiornato_il:new Date().toISOString()
+  };
+
+  salvaExtra.disabled=true;
+
+  try{
+    const vecchia=adesioni.find(x=>
+      x.uscita_id===uscita.id &&
+      x.atleta_id===atleta.id
+    );
+
+    const risultato=await rest('adesioni_uscite_extra',
+      vecchia
+      ?{
+        method:'PATCH',
+        filter:readQuery({id:'eq.'+vecchia.id}),
+        body:dati
+      }
+      :{
+        method:'POST',
+        body:{
+          uscita_id:uscita.id,
+          atleta_id:atleta.id,
+          genitore_id:session.user.id,
+          ...dati
+        }
+      }
+    );
+
+    if(!risultato?.length){
+      throw Error('Salvataggio non confermato');
+    }
+
+    if(vecchia)Object.assign(vecchia,risultato[0]);
+    else adesioni.push(risultato[0]);
+
+    notify('Risposta alla trasferta salvata!','good');
+
+  }catch(e){
+    notify('Errore nel salvataggio: '+e.message,'error');
+  }finally{
+    salvaExtra.disabled=false;
+  }
+};
+
+card.append(salvaExtra);
+
+
+
+        $('table7').append(card);
+        totale++;
+      }
+    }
+
+    $('count7').textContent=totale+' trasferte disponibili';
+
+    if(!totale){
+      $('table7').append(text('p',
+        'Nessuna trasferta extra disponibile.'));
+    }
+
+  }catch(e){
+    $('count7').textContent='Errore caricamento';
+    notify('Impossibile caricare le trasferte: '+e.message,'error');
+  }
+}
 async function apriAppello(){
   if(role!=='allenatore')return;
 
