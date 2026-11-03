@@ -1021,10 +1021,53 @@ const residue=Math.max(0,acquistate-utilizzate);
 const riepilogo=document.createElement('div');
 riepilogo.className='riepilogo-uscite7';
 
-riepilogo.textContent=
-  '🎿 Uscite acquistate: '+acquistate+
-  ' | Utilizzate: '+utilizzate+
-  ' | Residue: '+residue;
+
+riepilogo.style.cssText=
+  'margin-top:18px;background:white;border:1px solid #eee;border-radius:18px;overflow:hidden';
+
+const titoloUscite=document.createElement('div');
+titoloUscite.textContent='🎿 Crediti uscite';
+titoloUscite.style.cssText=
+  'background:#fff0f1;padding:18px;font-size:20px;font-weight:bold';
+
+riepilogo.append(titoloUscite);
+
+const corpoUscite=document.createElement('div');
+corpoUscite.style.cssText=
+  'padding:20px;display:flex;align-items:center;flex-wrap:wrap;gap:20px';
+
+if(acquistate===0){
+  corpoUscite.textContent='Nessun pacchetto assegnato.';
+}else{
+  const percentuale=Math.min(100,
+    Math.round(utilizzate/acquistate*100)
+  );
+
+  const grafico=document.createElement('div');
+  grafico.style.cssText=
+    'width:150px;height:150px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:conic-gradient(#1675c5 0 '+percentuale+'%,#dfe4ea '+percentuale+'% 100%)';
+
+  const centro=document.createElement('div');
+  centro.style.cssText=
+    'width:108px;height:108px;border-radius:50%;background:white;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:bold';
+  centro.textContent=percentuale+'%';
+
+  grafico.append(centro);
+
+  const dettagli=document.createElement('div');
+  dettagli.style.cssText=
+    'line-height:2;font-size:16px;white-space:pre-line';
+  dettagli.textContent=[
+    'Acquistate: '+acquistate,
+    '🔵 Utilizzate: '+utilizzate,
+    '⚪ Residue: '+residue
+  ].join('\n');
+
+  corpoUscite.append(grafico,dettagli);
+}
+
+riepilogo.append(corpoUscite);
+
 
 contenuto.append(riepilogo);
 
