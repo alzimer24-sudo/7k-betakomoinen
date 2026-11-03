@@ -356,7 +356,22 @@ if(role==='genitore' && ![
 ].includes(key)) continue;
 
   if(prev!==m.group){prev=m.group;nav.append(text('h3',prev))}
-  const b=text('button',m.label);b.type='button';b.className=section===key?'selected7':'';b.onclick=()=>void openSection(key);nav.append(b);
+ 
+const nomiGenitore={
+  atleti:'👤 Mio figlio',
+  allenamenti:'📅 Allenamenti',
+  risposte_allenamenti:'✅ Conferma allenamenti',
+  presenze_allenamenti:'📋 Presenze',
+  materiali:'🎥 Tecnica e video',
+  comunicazioni:'🔔 Avvisi e comunicazioni'
+};
+
+const b=text('button',
+  role==='genitore'
+    ? (nomiGenitore[key] || m.label)
+    : m.label
+);
+b.type='button';b.className=section===key?'selected7':'';b.onclick=()=>void openSection(key);nav.append(b);
  }
  if(role==='segreteria'){
   const invito=text('button','✉ Invita nuovo utente');
