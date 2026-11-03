@@ -256,6 +256,31 @@ async function loadDashboard(){
   catch{p.append(text('strong','—'));p.append(text('span','Dati non disponibili per questo account'))}
   root.append(p);
  }));
+ if(SCHEMA.certificati_in_scadenza.read.includes(role)){
+  try{
+    const certificati=(await fetchTable('certificati_in_scadenza',500))
+      .filter(c=>c.giorni_mancanti!=null && Number(c.giorni_mancanti)<=30);
+
+    if(certificati.length){
+      const avviso=text('div','','stat7');
+      avviso.append(text('strong','⚠️ CERTIFICATI MEDICI DA CONTROLLARE: '+certificati.length));
+
+      for(const c of certificati){
+        const giorni=Number(c.giorni_mancanti);
+        const stato=giorni<0?'SCADUTO da '+(-giorni)+' giorni':
+          giorni===0?'SCADE OGGI':'Mancano '+giorni+' giorni';
+
+        avviso.append(text('div',
+          (c.cognome||'')+' '+(c.nome||'')+
+          ' | Scadenza: '+c.data_scadenza+' | '+stato));
+      }
+      root.append(avviso);
+    }
+  }catch(e){
+    root.append(text('div','Impossibile controllare le scadenze: '+e.message,'stat7'));
+  }
+}
+
 }
 function moduleAdvice(t){
  const instructions={
