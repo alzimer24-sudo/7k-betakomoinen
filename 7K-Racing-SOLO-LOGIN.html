@@ -972,10 +972,14 @@ if(role==='genitore'){
   root.append(scheda);
 
   try{
-    const [legami,atleti]=await Promise.all([
-      fetchTable('genitori_atleti',500),
-      fetchTable('atleti',500)
-    ]);
+    
+const [legami,atleti,pacchetti,usciteUsate]=await Promise.all([
+  fetchTable('genitori_atleti',500),
+  fetchTable('atleti',500),
+  fetchTable('pacchetti_uscite',500),
+  fetchTable('uscite_utilizzate',500)
+]);
+
 
     const miei=new Set(
       legami
@@ -995,6 +999,35 @@ if(role==='genitore'){
       riga.textContent=
         [figlio.nome,figlio.cognome].filter(Boolean).join(' ');
       contenuto.append(riga);
+      
+const pacchettiFiglio=pacchetti.filter(
+  p=>p.atleta_id===figlio.id
+);
+
+const acquistate=pacchettiFiglio.reduce(
+  (somma,p)=>somma+Number(p.uscite_acquistate||0),0
+);
+
+const idsPacchetti=new Set(
+  pacchettiFiglio.map(p=>p.id)
+);
+
+const utilizzate=usciteUsate.filter(
+  u=>idsPacchetti.has(u.pacchetto_id)
+).length;
+
+const residue=Math.max(0,acquistate-utilizzate);
+
+const riepilogo=document.createElement('div');
+riepilogo.className='riepilogo-uscite7';
+
+riepilogo.textContent=
+  '🎿 Uscite acquistate: '+acquistate+
+  ' | Utilizzate: '+utilizzate+
+  ' | Residue: '+residue;
+
+contenuto.append(riepilogo);
+
     }
   }catch(e){
     contenuto.textContent='Errore caricamento: '+e.message;
