@@ -973,12 +973,19 @@ if(role==='genitore'){
 
   try{
     
-const [legami,atleti,pacchetti,usciteUsate]=await Promise.all([
+
+const [
+  legami,atleti,pacchetti,usciteUsate,
+  allenamenti,risposte
+]=await Promise.all([
   fetchTable('genitori_atleti',500),
   fetchTable('atleti',500),
   fetchTable('pacchetti_uscite',500),
-  fetchTable('uscite_utilizzate',500)
+  fetchTable('uscite_utilizzate',500),
+  fetchTable('allenamenti',500),
+  fetchTable('risposte_allenamenti',500)
 ]);
+
 
 
     const miei=new Set(
@@ -1070,6 +1077,61 @@ riepilogo.append(corpoUscite);
 
 
 contenuto.append(riepilogo);
+      
+const oggiRoma=new Intl.DateTimeFormat('sv-SE',{
+  timeZone:'Europe/Rome',
+  year:'numeric',
+  month:'2-digit',
+  day:'2-digit'
+}).format(new Date());
+
+const prossimi=allenamenti
+  .filter(a=>
+    a.gruppo_id===figlio.gruppo_id &&
+    a.data>=oggiRoma
+  )
+  .sort((a,b)=>
+    (a.data+' '+a.ora).localeCompare(b.data+' '+b.ora)
+  )
+  .slice(0,3);
+
+const schedaAllenamenti=document.createElement('section');
+schedaAllenamenti.className='scheda-riepilogo7';
+
+const titoloAllenamenti=document.createElement('h3');
+titoloAllenamenti.textContent='📅 Prossimi allenamenti';
+
+const elencoAllenamenti=document.createElement('div');
+elencoAllenamenti.className='contenuto';
+
+if(!prossimi.length){
+  elencoAllenamenti.textContent='Nessun allenamento programmato.';
+}
+
+for(const a of prossimi){
+  const conferma=risposte.find(r=>
+    r.allenamento_id===a.id &&
+    r.atleta_id===figlio.id
+  );
+
+  const stato=conferma?.risposta==='partecipo'
+    ? '✅ Confermato'
+    : conferma?.risposta==='non_partecipo'
+      ? '❌ Non partecipa'
+      : '⏳ Da confermare';
+
+  const rigaAllenamento=document.createElement('p');
+  rigaAllenamento.textContent=
+    a.data+' · '+String(a.ora||'').slice(0,5)+
+    ' · '+(a.luogo||'Luogo da definire')+
+    ' — '+stato;
+
+  elencoAllenamenti.append(rigaAllenamento);
+}
+
+schedaAllenamenti.append(titoloAllenamenti,elencoAllenamenti);
+contenuto.append(schedaAllenamenti);
+
 
     }
   }catch(e){
