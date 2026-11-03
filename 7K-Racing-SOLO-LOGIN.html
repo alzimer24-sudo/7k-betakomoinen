@@ -194,12 +194,15 @@ async function apriAppello(){
   $('limitNotice7').textContent='';
 
   try{
-    const [assegnazioni,allenamenti,risposte,atleti]=await Promise.all([
-      fetchTable('allenatori_gruppi',500),
-      fetchTable('allenamenti',500),
-      fetchTable('risposte_allenamenti',500),
-      fetchTable('atleti',500)
-    ]);
+    
+const [assegnazioni,allenamenti,risposte,atleti,presenze]=await Promise.all([
+  fetchTable('allenatori_gruppi',500),
+  fetchTable('allenamenti',500),
+  fetchTable('risposte_allenamenti',500),
+  fetchTable('atleti',500),
+  fetchTable('presenze_allenamenti',500)
+]);
+
 
     if(id!==loadSerial||section!=='appello7')return;
 
@@ -257,7 +260,22 @@ async function apriAppello(){
 
         if(!atleta)continue;
 
-        lista.append(text('p','☑ '+formatLabel('atleti',atleta)));
+        
+const riga=document.createElement('label');
+const flag=document.createElement('input');
+flag.type='checkbox';
+flag.className='presenzaFlag7';
+flag.dataset.atletaId=atleta.id;
+
+const esistente=presenze.find(p=>
+  p.allenamento_id===a.id &&
+  p.atleta_id===atleta.id
+);
+flag.checked=esistente?.presente===true;
+       
+riga.append(flag,' '+formatLabel('atleti',atleta));
+lista.append(riga,document.createElement('br'));
+
         totale++;
       }
 
@@ -266,6 +284,80 @@ async function apriAppello(){
       if(!totale){
         lista.append(text('p','Nessun atleta confermato visibile.'));
       }
+    
+if(totale){
+  const salva=text('button','💾 Salva presenze');
+  salva.type='button';
+
+  salva.onclick=async()=>{
+    const a=disponibili.find(x=>x.id===scelta.value);
+    const flags=[...lista.querySelectorAll('.presenzaFlag7')];
+    const presenti=flags.filter(f=>f.checked).length;
+
+    if(!confirm('Confermi l’appello? Presenti: '+
+      presenti+' su '+flags.length))return;
+
+    salva.disabled=true;
+    scelta.disabled=true;
+    let modifiche=0;
+
+    try{
+      const attuali=await rest('presenze_allenamenti',{
+        filter:readQuery({
+          select:'*',
+          allenamento_id:'eq.'+a.id
+        })
+      });
+
+      for(const flag of flags){
+        const atletaId=flag.dataset.atletaId;
+        const vecchia=attuali.find(p=>p.atleta_id===atletaId);
+
+        if(vecchia && vecchia.presente===flag.checked)continue;
+
+        const salvate=await rest('presenze_allenamenti',
+          vecchia
+          ? {
+              method:'PATCH',
+              filter:readQuery({id:'eq.'+vecchia.id}),
+              body:{presente:flag.checked}
+            }
+          : {
+              method:'POST',
+              body:{
+                allenamento_id:a.id,
+                atleta_id:atletaId,
+                presente:flag.checked
+              }
+            }
+        );
+
+        if(!Array.isArray(salvate)||!salvate.length){
+          throw Error('Salvataggio non confermato');
+        }
+
+        const indice=presenze.findIndex(p=>p.id===salvate[0].id);
+        if(indice>=0)presenze[indice]=salvate[0];
+        else presenze.push(salvate[0]);
+
+        modifiche++;
+      }
+
+      notify('Appello salvato! Presenti: '+
+        presenti+' su '+flags.length,'good');
+
+    }catch(e){
+      notify('Salvataggio incompleto ('+modifiche+
+        ' modifiche riuscite): '+e.message,'error');
+    }finally{
+      salva.disabled=false;
+      scelta.disabled=false;
+    }
+  };
+
+  lista.append(salva);
+}
+
     }
 
     scelta.onchange=aggiornaLista;
