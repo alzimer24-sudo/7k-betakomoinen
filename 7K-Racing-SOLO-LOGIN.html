@@ -1131,6 +1131,22 @@ for(const a of prossimi){
 
 schedaAllenamenti.append(titoloAllenamenti,elencoAllenamenti);
 contenuto.append(schedaAllenamenti);
+      const tuttePresenze=await fetchTable('presenze_allenamenti',500).catch(()=>null);
+const miePresenze=tuttePresenze?.filter(p=>p.atleta_id===figlio.id);
+const nPresenti=miePresenze?.filter(p=>p.presente===true).length||0;
+const nAssenti=miePresenze?.filter(p=>p.presente===false).length||0;
+
+const testoPresenze=!miePresenze
+  ? 'Presenze non disponibili.'
+  : miePresenze.length===0
+  ? 'Nessuna presenza ancora registrata.'
+  : '✅ Presenti: '+nPresenti+' | ❌ Assenti: '+nAssenti+
+    ' | Frequenza: '+Math.round(nPresenti/miePresenze.length*100)+'%';
+
+const cardPresenze=document.createElement('section');
+cardPresenze.className='scheda-riepilogo7';
+cardPresenze.innerHTML='<h3>✅ Presenze allenamenti</h3><div class="contenuto">'+testoPresenze+'</div>';
+contenuto.append(cardPresenze);
 
 
     }
