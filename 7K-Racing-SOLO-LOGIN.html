@@ -1372,7 +1372,27 @@ if(t==='atleti'){const pacchetti=displayLookups.get('pacchetti_uscite');const to
   }
   tbody.append(row);
  }
- tbl.append(tbody);box.append(tbl);
+ if(t==='comunicazioni'){
+  for(const rec of filtered){
+    const card=document.createElement('div');
+    card.className='scheda-riepilogo7';
+    card.style.marginBottom='12px';
+
+    const titolo=document.createElement('h3');
+    titolo.textContent=rec.titolo||'Comunicazione';
+
+    const messaggio=document.createElement('div');
+    messaggio.className='contenuto';
+    messaggio.textContent=rec.messaggio||'';
+    messaggio.style.whiteSpace='pre-wrap';
+    messaggio.style.overflowWrap='anywhere';
+
+    card.append(titolo,messaggio);
+    box.append(card);
+  }
+}else{
+  tbl.append(tbody);box.append(tbl);
+}
  // resolves human-readable FK labels without reloading the main dataset
  if(!displayLookupsReady.has(t)){
    displayLookupsReady.add(t);void warmDisplayLookups(t);
