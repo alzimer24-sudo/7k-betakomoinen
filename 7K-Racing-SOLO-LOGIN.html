@@ -1547,6 +1547,93 @@ async function buildForm(t,record){
  for(const dep of ['stagione_id','allenamento_id','quota_id','uscita_id'])if(formInputs.has(dep)){
   formInputs.get(dep).addEventListener('change',()=>void populateDependents(t,dep));
  }
+ // Una sola scheda per la Segreteria: il certificato resta nella tabella riservata.
+ if(t==='atleti'&&role==='segreteria'){
+  const etichetta=document.createElement('label');
+  etichetta.append(text('span','Scadenza certificato medico'));
+  const scadenza=document.createElement('input');
+  scadenza.type='date';
+  scadenza.name='scadenza_certificato_medico';
+  scadenza.id='field7_scadenza_certificato_medico';
+  etichetta.append(scadenza);
+  etichetta.append(text('small','Facoltativo. La data viene salvata separatamente nei Certificati medici.','muted7'));
+  area.append(etichetta);
+  formInputs.set('scadenza_certificato_medico',scadenza);
+  if(record?.id){
+   try{
+    const vecchi=await rest('certificati_medici',{filter:readQuery({
+      select:'id,data_scadenza,aggiornato_il',
+      atleta_id:'eq.'+record.id,order:'aggiornato_il.desc',limit:'1'
+    })});
+    if(vecchi[0]){
+     scadenza.value=vecchi[0].data_scadenza||'';
+     scadenza.dataset.certificatoId=vecchi[0].id;
+    }
+   }catch(e){
+    scadenza.disabled=true;
+    etichetta.append(text('small','Scadenza non caricabile: '+e.message+'; usa la sezione Certificati medici.','muted7'));
+   }
+  }
+ }
+ // Associa fino a due genitori gia' registrati nell'Anagrafica, direttamente dalla scheda Atleta.
+ // Queste associazioni anagrafiche NON creano ne' attivano account di accesso.
+ if(t==='atleti'&&role==='segreteria'){
+  const titoloGenitori=text('div','Genitori o tutori collegati','wide7');
+  titoloGenitori.style.fontWeight='bold';
+  area.append(titoloGenitori);
+  const selezioni=[];
+  for(let i=1;i<=2;i++){
+   const etichetta=document.createElement('label');
+   etichetta.append(text('span','Genitore / tutore '+i+' (facoltativo)'));
+   const scelta=document.createElement('select');
+   scelta.name='genitore_scheda_'+i;
+   scelta.id='field7_genitore_scheda_'+i;
+   const vuoto=document.createElement('option');
+   vuoto.value='';vuoto.textContent='— Nessuno —';
+   scelta.append(vuoto);
+   etichetta.append(scelta);
+   area.append(etichetta);
+   formInputs.set('genitore_scheda_'+i,scelta);
+   selezioni.push(scelta);
+  }
+  const notaGenitori=text('small','Seleziona genitori presenti in Anagrafica genitori. Un atleta maggiorenne potra usare successivamente il proprio account di accesso Genitore.','muted7');
+  notaGenitori.classList.add('wide7');area.append(notaGenitori);
+  try{
+   const anagrafiche=await getLookup('anagrafica_genitori');
+   const ordinate=[...anagrafiche].sort((a,b)=>formatLabel('anagrafica_genitori',a).localeCompare(formatLabel('anagrafica_genitori',b),'it'));
+   if(anagrafiche.length>=500)notaGenitori.textContent='Attenzione: l’elenco mostra solo i primi 500 genitori. Per altri collegamenti usa la sezione Collega genitori e atleti.';
+   for(const scelta of selezioni){
+    for(const genitore of ordinate){
+     const op=document.createElement('option');
+     op.value=genitore.id;
+     op.textContent=formatLabel('anagrafica_genitori',genitore);
+     scelta.append(op);
+    }
+   }
+   if(record?.id){
+    const associazioni=await rest('anagrafica_genitori_atleti',{filter:readQuery({
+     select:'genitore_anagrafica_id',atleta_id:'eq.'+record.id,limit:'100'
+    })});
+    if(associazioni.length>2){
+     selezioni.forEach(c=>c.disabled=true);
+     notaGenitori.textContent='Questo atleta ha oltre due genitori/tutori associati. Gestiscili in Collega genitori e atleti; le associazioni non saranno modificate da questa scheda.';
+    }else{
+     for(let i=0;i<associazioni.length;i++){
+      const id=associazioni[i].genitore_anagrafica_id;
+      if(![...selezioni[i].options].some(o=>o.value===id)){
+       const op=document.createElement('option');op.value=id;
+       op.textContent='Genitore associato · '+id.slice(0,8)+'…';
+       selezioni[i].append(op);
+      }
+      selezioni[i].value=id;
+     }
+    }
+   }
+  }catch(e){
+   selezioni.forEach(c=>c.disabled=true);
+   notaGenitori.textContent='Associazioni non disponibili: '+e.message+'. Usa Collega genitori e atleti per gestirle.';
+  }
+ }
  $('saveRecord7').textContent=record?'Salva modifiche su Supabase':'Inserisci su Supabase';
  if(record)outer.scrollIntoView({behavior:'smooth',block:'start'});
 }
@@ -1578,6 +1665,13 @@ async function saveRecord(event){
  const t=section;
  try{
   const payload=formData7(t);
+  // Prima del salvataggio: non ammettere lo stesso genitore in entrambe le caselle.
+  if(t==='atleti'&&role==='segreteria'){
+   const uno=formInputs.get('genitore_scheda_1'),due=formInputs.get('genitore_scheda_2');
+   if(uno&&!uno.disabled && due&&!due.disabled && uno.value && uno.value===due.value){
+    throw Error('Genitore 1 e Genitore 2 devono essere persone diverse.');
+   }
+  }
   if(t==='stagioni'&&payload.archiviata===true&&currentEdit?.archiviata===false){if(!confirm('Vuoi archiviare questa stagione? Può bloccare le modifiche dei dati collegati.'))return}
   if(t==='prenotazioni_pulmini'&&role==='genitore'){
    if(!confirm('La richiesta verrà registrata come ATTESA, non come posto garantito. Confermi?'))return;
@@ -1586,8 +1680,64 @@ async function saveRecord(event){
   if(currentEdit)changed=await rest(t,{method:'PATCH',filter:dbFilterFor(t,currentEdit),body:payload});
   else changed=await rest(t,{method:'POST',filter:'select=*',body:payload});
   if(!Array.isArray(changed)||changed.length===0)throw Error('Il database non ha restituito alcuna riga salvata. Controlla i permessi e i dati.');
+  // Salvare prima l'atleta, poi la scadenza in certificati_medici: mai nel record atleti.
+  let erroreCertificato=null;
+  if(t==='atleti'&&role==='segreteria'){
+   const ctl=formInputs.get('scadenza_certificato_medico');
+   const nuovaScadenza=ctl?.disabled?'':(ctl?.value||'');
+   if(nuovaScadenza){
+    try{
+     const atletaId=changed[0]?.id;
+     if(!atletaId)throw Error('Identificativo atleta non restituito da Supabase.');
+     const certificatoId=ctl.dataset.certificatoId;
+     const dati={data_scadenza:nuovaScadenza};
+     const salvati=certificatoId
+       ? await rest('certificati_medici',{method:'PATCH',filter:readQuery({id:'eq.'+certificatoId,select:'*'}),body:dati})
+       : await rest('certificati_medici',{method:'POST',filter:'select=*',body:{atleta_id:atletaId,...dati}});
+     if(!Array.isArray(salvati)||salvati.length===0)throw Error('Nessuna scadenza restituita dal database.');
+    }catch(e){erroreCertificato=e.message}
+   }
+  }
+  // Salva il collegamento anagrafico dopo il record atleta, senza usare genitori_atleti (Auth).
+  let erroreGenitori=null;
+  if(t==='atleti'&&role==='segreteria'){
+   const uno=formInputs.get('genitore_scheda_1'),due=formInputs.get('genitore_scheda_2');
+   if(uno&&!uno.disabled&&due&&!due.disabled){
+    try{
+     const atletaId=changed[0]?.id;
+     if(!atletaId)throw Error('Identificativo atleta non restituito da Supabase.');
+     const selezionati=[uno.value,due.value].filter(Boolean);
+     const precedenti=await rest('anagrafica_genitori_atleti',{filter:readQuery({
+      select:'genitore_anagrafica_id',atleta_id:'eq.'+atletaId,limit:'100'
+     })});
+     if(precedenti.length>2)throw Error('Sono presenti oltre due collegamenti: usa il modulo dedicato.');
+     const vecchi=new Set(precedenti.map(x=>x.genitore_anagrafica_id));
+     const nuovi=new Set(selezionati);
+     // Prima aggiungi i nuovi collegamenti: se fallisce, i precedenti rimangono intatti.
+     for(const id of nuovi){
+      if(!vecchi.has(id)){
+       const inseriti=await rest('anagrafica_genitori_atleti',{method:'POST',filter:'select=*',body:{genitore_anagrafica_id:id,atleta_id:atletaId}});
+       if(!Array.isArray(inseriti)||inseriti.length===0)throw Error('Associazione genitore non confermata da Supabase.');
+      }
+     }
+     for(const id of vecchi){
+      if(!nuovi.has(id)){
+       const eliminati=await rest('anagrafica_genitori_atleti',{method:'DELETE',filter:readQuery({
+        genitore_anagrafica_id:'eq.'+id,atleta_id:'eq.'+atletaId,select:'*'
+       })});
+       if(!Array.isArray(eliminati)||eliminati.length===0)throw Error('Vecchio collegamento non rimosso.');
+      }
+     }
+    }catch(e){erroreGenitori=e.message}
+   }
+  }
   lookups.clear();displayLookups.clear();displayLookupsReady.clear();currentEdit=null;
-  await loadModule(t);notify('Salvataggio riuscito su Supabase · '+SCHEMA[t].label,'good');
+  await loadModule(t);
+  const problemi=[];
+  if(erroreCertificato)problemi.push('Scadenza certificato non salvata: '+erroreCertificato);
+  if(erroreGenitori)problemi.push('Collegamento genitori non completato: '+erroreGenitori);
+  if(problemi.length)notify('Atleta salvato, ma '+problemi.join(' | ')+'. Controlla i moduli dedicati.','error');
+  else notify('Salvataggio riuscito su Supabase · '+SCHEMA[t].label,'good');
  }catch(e){notify('Salvataggio non riuscito: '+e.message,'error')}
  finally{busy=false;b.disabled=false}
 }
