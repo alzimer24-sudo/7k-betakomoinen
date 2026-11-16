@@ -283,6 +283,16 @@ body.genitore-ui .scheda-riepilogo7 .contenuto {
 }
 
 
+/* Rate di gruppo - editor riservato alla Segreteria. */
+.gruppi7-ratebox{grid-column:1 / -1;background:#fff8f9;border:1px solid #ead2d6;border-radius:12px;padding:16px;margin-top:10px;min-width:0}
+.gruppi7-ratebox h3{margin:0 0 6px;font-size:17px}
+.gruppi7-raterow{display:grid;grid-template-columns:minmax(120px,1.3fr) minmax(145px,1fr) minmax(120px,1fr) minmax(120px,1fr) auto;gap:10px;align-items:end;margin:12px 0;padding:12px;background:white;border:1px solid #e7e7e7;border-radius:8px}
+.gruppi7-raterow label{min-width:0;font-size:12px;font-weight:600}
+.gruppi7-raterow input{width:100%;box-sizing:border-box;margin-top:5px}
+.gruppi7-rateactions{display:flex;flex-wrap:wrap;gap:9px;margin:8px 0}
+.gruppi7-rateactions button,.gruppi7-raterow button{background:white;color:#34373d;border:1px solid #c5cbd2;border-radius:7px;padding:10px;cursor:pointer}
+.gruppi7-ratestatus{font-size:13px;line-height:1.6;font-weight:600}
+@media(max-width:960px){.gruppi7-raterow{grid-template-columns:repeat(2,minmax(0,1fr))}.gruppi7-raterow label:first-child{grid-column:1/-1}}
 /* Gruppi: quadro stagionale per la sola Segreteria. */
 .gruppi7-title{margin:8px 0 8px;font-size:18px}
 .gruppi7-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:14px;margin:14px 0 22px}
@@ -392,7 +402,7 @@ async function ensureFresh(){
 }
 async function rest(table,{method='GET',filter='',body=null}={}){
  
-if(!SCHEMA[table] && table!=='adesioni_uscite_extra')
+if(!SCHEMA[table] && !['adesioni_uscite_extra','scadenze_gruppo'].includes(table))
   throw Error('Tabella non prevista nello schema caricato');
 
  await ensureFresh();
@@ -1394,10 +1404,12 @@ if(key==='risposte_allenamenti' && role==='genitore'){
   if(id!==loadSerial ||section!==key)return;
   if(key==='atleti'){try{displayLookups.set('pacchetti_uscite',await fetchTable('pacchetti_uscite',1000));}catch{displayLookups.delete('pacchetti_uscite');}}
    if(key==='gruppi'&&role==='segreteria'){
-     elencoAtletiGruppi7=null;erroreElencoGruppi7='';
+     elencoAtletiGruppi7=null;erroreElencoGruppi7='';scadenzeGruppi7=null;erroreScadenzeGruppi7='';
      try{
        elencoAtletiGruppi7=await fetchTable('atleti',1000);
      }catch(e){erroreElencoGruppi7=e.message;}
+     try{scadenzeGruppi7=await rest('scadenze_gruppo',{filter:readQuery({select:'*',limit:'1000',order:'gruppo_id.asc,numero_rata.asc'})});}
+     catch(e){erroreScadenzeGruppi7=e.message;}
      if(id!==loadSerial||section!==key)return;
    }
    rows7=data;renderDataTable();
@@ -1409,7 +1421,7 @@ function prettyValue(t,field,val){if(val===null||val===undefined)return '—';if
  const target=FOREIGN[field], cached=displayLookups.get(target);
  if(target&&cached){const match=cached.find(x=>x.id===val);if(match)return formatLabel(target,match)}
  }if(String(val).length>120)return String(val).slice(0,117)+'…';return val}
-let elencoAtletiGruppi7=null,erroreElencoGruppi7='';
+let elencoAtletiGruppi7=null,erroreElencoGruppi7='',scadenzeGruppi7=null,erroreScadenzeGruppi7='';
 const displayLookups=new Map();
 async function warmDisplayLookups(t){
  const fk=SCHEMA[t].fields.filter(f=>FOREIGN[f.nome]).map(f=>FOREIGN[f.nome]);
@@ -1431,6 +1443,7 @@ function renderDataTable(){
     intro.className='gruppi7-title';box.append(intro);
     const info=text('p','Quota corso e trasporto sono importi stagionali. Trasporto Sì/No si modifica in Atleti → Modifica. Il totale mostrato non certifica incassi o pagamenti.','muted7');
     box.append(info);
+    if(erroreScadenzeGruppi7)box.append(text('p','Scadenze dei gruppi non disponibili: '+erroreScadenzeGruppi7,'muted7'));
     if(erroreElencoGruppi7)box.append(text('p','Elenco atleti non disponibile: '+erroreElencoGruppi7,'muted7'));
     else if(!elencoAtletiGruppi7)box.append(text('p','Caricamento elenco atleti non disponibile.','muted7'));
     else{
@@ -1446,6 +1459,20 @@ function renderDataTable(){
         card.append(text('h4',String(g.nome||'Gruppo')+' · '+membri.length+' atlet'+(membri.length===1?'a':'i')));
         const quote=text('p','Corso: '+(prezzoValido(corso)?euro(corso):'da impostare')+'  |  Trasporto: '+(prezzoValido(trasporto)?euro(trasporto):'da impostare'),'gruppi7-quote');
         card.append(quote);
+        if(scadenzeGruppi7){
+          const piano=scadenzeGruppi7.filter(r=>r.gruppo_id===g.id).sort((a,b)=>a.numero_rata-b.numero_rata);
+          if(piano.length){
+            const riepilogo=document.createElement('div');riepilogo.className='gruppi7-rateview';
+            riepilogo.append(text('strong','Scadenze del gruppo'));
+            for(const rata of piano){
+              const quando=rata.data_scadenza?String(rata.data_scadenza).split('-').reverse().join('/'):'—';
+              riepilogo.append(text('p',(rata.descrizione||'Rata '+rata.numero_rata)+' · '+quando+
+                ' · Senza pulmino '+euro(Number(rata.importo_senza_trasporto||0))+
+                ' · Con pulmino '+euro(Number(rata.importo_con_trasporto||0)),'muted7'));
+            }
+            card.append(riepilogo);
+          }
+        }
         if(!membri.length){card.append(text('p','Nessun atleta assegnato a questo gruppo.','muted7'));}
         else{
           const wrap=document.createElement('div');wrap.className='gruppi7-tablewrap';
@@ -1613,6 +1640,161 @@ async function populateDependents(t,field){
  const deps={stagione_id:['gruppo_id','atleta_id'],allenamento_id:['atleta_id'],quota_id:['rata_id'],uscita_id:['pulmino_id']};
  for(const dep of deps[field]||[]){if(formInputs.has(dep))await populateForeign(t,dep,null)}
 }
+
+// Le scadenze appartengono al gruppo e NON generano pagamenti da sole.
+// Si usa la tabella scadenze_gruppo con RLS della Segreteria.
+let editorRateGruppo7=null;
+const centesimi7=n=>Math.round(Number(n)*100);
+function creaRigaScadenza7(riga={}){
+ const ed=editorRateGruppo7;
+ const wrap=document.createElement('div');wrap.className='gruppi7-raterow';
+ wrap.dataset.id=riga.id||'';
+ const campi={};
+ for(const [key,label,type] of [
+   ['descrizione','Descrizione','text'],
+   ['data_scadenza','Data scadenza','date'],
+   ['importo_senza_trasporto','Senza pulmino (€)','number'],
+   ['importo_con_trasporto','Con pulmino (€)','number']]){
+   const l=document.createElement('label');l.append(text('span',label));
+   const ctl=document.createElement('input');ctl.type=type;ctl.value=String(riga[key]??'');
+   if(type==='number'){ctl.step='0.01';ctl.min='0';}
+   ctl.required=true;ctl.addEventListener('input',aggiornaTotaliRate7);
+   l.append(ctl);wrap.append(l);campi[key]=ctl;
+ }
+ const elimina=text('button','Rimuovi');elimina.type='button';
+ elimina.onclick=()=>{
+   // La numerazione delle rate esistenti non deve cambiare, per il vincolo UNIQUE.
+   if(wrap!==ed.rows.lastElementChild){notify('Per mantenere la numerazione corretta elimina prima le rate successive.','error');return;}
+   if(wrap.dataset.id&&!confirm('Rimuovere questa scadenza dal piano di gruppo? Non eliminare rate con pagamenti già registrati.'))return;
+   wrap.remove();aggiornaTotaliRate7();
+ };
+ wrap.append(elimina);ed.rows.append(wrap);
+ wrap._campi7=campi;
+ aggiornaTotaliRate7();
+}
+function aggiornaTotaliRate7(){
+ const ed=editorRateGruppo7;if(!ed)return;
+ const righe=[...ed.rows.children];
+ const corso=formInputs.get('quota_corso')?.value;
+ const pulmino=formInputs.get('quota_trasporto')?.value;
+ const tNo=righe.reduce((sum,row)=>sum+(Number(row._campi7.importo_senza_trasporto.value)||0),0);
+ const tSi=righe.reduce((sum,row)=>sum+(Number(row._campi7.importo_con_trasporto.value)||0),0);
+ if(!righe.length){ed.status.textContent='Nessuna rata impostata. Inserisci acconto e scadenze per predisporre il piano.';return;}
+ const eu=n=>new Intl.NumberFormat('it-IT',{style:'currency',currency:'EUR'}).format(n);
+ if(corso===''||pulmino===''){
+   ed.status.textContent='Totale rate: '+eu(tNo)+' senza pulmino, '+eu(tSi)+' con pulmino. Imposta entrambe le quote del gruppo.';
+   return;
+ }
+ const attesoNo=Number(corso),attesoSi=Number(corso)+Number(pulmino);
+ ed.status.textContent='Rate: '+eu(tNo)+' / '+eu(attesoNo)+' senza pulmino; '+eu(tSi)+' / '+eu(attesoSi)+' con pulmino'+
+    (centesimi7(tNo)===centesimi7(attesoNo)&&centesimi7(tSi)===centesimi7(attesoSi)?' ✓ Importi corretti':' · Da verificare');
+}
+async function mostraScadenzeNelGruppo7(area,record){
+ editorRateGruppo7=null;
+ const panel=document.createElement('section');panel.className='gruppi7-ratebox wide7';
+ panel.append(text('h3','Scadenze e importi delle rate'));
+ panel.append(text('p','Prima rata: acconto uguale per tutti. Le date coincidono; gli importi successivi sono diversi con e senza pulmino. Il piano non registra incassi.','muted7'));
+ const righe=document.createElement('div');panel.append(righe);
+ const azioni=document.createElement('div');azioni.className='gruppi7-rateactions';
+ const tre=text('button','Prepara acconto + 2 rate');tre.type='button';
+ tre.onclick=()=>{
+   if(righe.children.length){notify('Per aggiungere una singola scadenza usa «Aggiungi rata».','error');return;}
+   for(const descrizione of ['Acconto','Prima rata','Seconda rata'])creaRigaScadenza7({descrizione});
+ };
+ const aggiungi=text('button','+ Aggiungi rata');aggiungi.type='button';
+ aggiungi.onclick=()=>creaRigaScadenza7({descrizione:righe.children.length===0?'Acconto':'Rata '+(righe.children.length+1)});
+ const calcola=text('button','Calcola le 2 rate uguali');calcola.type='button';
+ calcola.onclick=()=>{
+   if(righe.children.length!==3){notify('Il calcolo automatico richiede acconto + 2 rate.','error');return;}
+   const corso=formInputs.get('quota_corso')?.value,pulmino=formInputs.get('quota_trasporto')?.value;
+   const prima=righe.firstElementChild._campi7;
+   if(corso===''||pulmino===''||prima.importo_senza_trasporto.value===''){
+     notify('Inserisci prima quota corso, quota trasporto e importo dell’acconto.','error');return;
+   }
+   const c=centesimi7(corso),t=centesimi7(pulmino),a=centesimi7(prima.importo_senza_trasporto.value);
+   if(!Number.isFinite(c)||!Number.isFinite(t)||!Number.isFinite(a)||c<0||t<0||a<0||a>c){
+     notify('Verifica gli importi: l’acconto non può superare la quota corso.','error');return;
+   }
+   prima.importo_con_trasporto.value=(a/100).toFixed(2);
+   const restaCorso=c-a,restaPulmino=c+t-a;
+   const second=righe.children[1]._campi7,third=righe.children[2]._campi7;
+   second.importo_senza_trasporto.value=(Math.floor(restaCorso/2)/100).toFixed(2);
+   third.importo_senza_trasporto.value=(Math.ceil(restaCorso/2)/100).toFixed(2);
+   second.importo_con_trasporto.value=(Math.floor(restaPulmino/2)/100).toFixed(2);
+   third.importo_con_trasporto.value=(Math.ceil(restaPulmino/2)/100).toFixed(2);
+   aggiornaTotaliRate7();
+ };
+ azioni.append(tre,aggiungi,calcola);panel.append(azioni);
+ const status=text('p','', 'gruppi7-ratestatus');panel.append(status);
+ editorRateGruppo7={rows:righe,status,loadError:false,gruppoId:record?.id||null,originali:[]};
+ area.append(panel);
+ for(const k of ['quota_corso','quota_trasporto'])formInputs.get(k)?.addEventListener('input',aggiornaTotaliRate7);
+ if(record?.id){
+   try{
+     const precedenti=await rest('scadenze_gruppo',{filter:readQuery({select:'*',gruppo_id:'eq.'+record.id,order:'numero_rata.asc',limit:'200'})});
+     editorRateGruppo7.originali=precedenti;
+     for(const r of precedenti)creaRigaScadenza7(r);
+   }catch(e){
+     editorRateGruppo7.loadError=true;
+     panel.append(text('p','Impossibile leggere le rate precedenti: '+e.message+'. Salvataggio delle scadenze bloccato per sicurezza.','muted7'));
+     tre.disabled=true;aggiungi.disabled=true;calcola.disabled=true;
+   }
+ }
+ aggiornaTotaliRate7();
+}
+function leggiRateGruppo7(){
+ const ed=editorRateGruppo7;
+ if(!ed||ed.loadError)throw Error('Impossibile verificare il piano rate: ricarica la sezione Gruppi.');
+ const righe=[...ed.rows.children];if(!righe.length)return [];
+ const costo=formInputs.get('quota_corso')?.value;
+ const trasporto=formInputs.get('quota_trasporto')?.value;
+ if(costo===''||trasporto==='')throw Error('Per impostare le rate inserisci quota corso e quota trasporto (anche 0).');
+ const no=Number(costo),si=no+Number(trasporto);
+ if(!Number.isFinite(no)||!Number.isFinite(si)||no<0||si<no)throw Error('Le quote del gruppo devono essere numeri validi non negativi.');
+ const vals=righe.map((node,i)=>{
+   const c=node._campi7;
+   const descrizione=c.descrizione.value.trim();
+   const data_scadenza=c.data_scadenza.value;
+   const n=c.importo_senza_trasporto.value, y=c.importo_con_trasporto.value;
+   if(!descrizione||!data_scadenza||n===''||y==='')throw Error('Completa descrizione, data e importi per la rata '+(i+1)+'.');
+   if(!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(data_scadenza))throw Error('Data non valida per la rata '+(i+1)+'.');
+   const a=Number(n),b=Number(y);
+   if(!Number.isFinite(a)||!Number.isFinite(b)||a<0||b<0||a!==Math.round(a*100)/100||b!==Math.round(b*100)/100)
+     throw Error('Gli importi delle rate devono essere validi e con massimo due decimali.');
+   if(b<a)throw Error('L’importo con pulmino non può essere inferiore a quello senza pulmino.');
+   return {id:node.dataset.id||null,numero_rata:i+1,descrizione,data_scadenza,importo_senza_trasporto:a,importo_con_trasporto:b};
+ });
+ if(centesimi7(vals[0].importo_senza_trasporto)!==centesimi7(vals[0].importo_con_trasporto))
+   throw Error('L’acconto deve avere lo stesso importo con e senza pulmino.');
+ if(vals.some((r,i)=>i&&r.data_scadenza<vals[i-1].data_scadenza))
+   throw Error('Le scadenze devono essere in ordine cronologico.');
+ const totNo=vals.reduce((s,r)=>s+centesimi7(r.importo_senza_trasporto),0);
+ const totSi=vals.reduce((s,r)=>s+centesimi7(r.importo_con_trasporto),0);
+ if(totNo!==centesimi7(no)||totSi!==centesimi7(si))
+   throw Error('La somma delle rate deve coincidere con quota corso e quota corso + trasporto.');
+ return vals;
+}
+async function salvaRateGruppo7(gruppoId,rate){
+ const ed=editorRateGruppo7;if(!ed||ed.loadError)throw Error('Piano rate non disponibile.');
+ const prima=new Map(ed.originali.map(x=>[x.id,x]));
+ // Prima aggiorna i numeri esistenti, poi rimuove solo le rate finali.
+ for(const r of rate){
+   const payload={gruppo_id:gruppoId,numero_rata:r.numero_rata,descrizione:r.descrizione,
+     data_scadenza:r.data_scadenza,importo_senza_trasporto:r.importo_senza_trasporto,importo_con_trasporto:r.importo_con_trasporto};
+   if(r.id){
+     const old=prima.get(r.id);if(!old)throw Error('Rata non riconosciuta: ricarica la pagina.');
+     if(Object.keys(payload).some(k=>String(payload[k])!==String(old[k])))
+       await rest('scadenze_gruppo',{method:'PATCH',filter:readQuery({id:'eq.'+r.id}),body:payload});
+   }else{
+     await rest('scadenze_gruppo',{method:'POST',body:payload});
+   }
+ }
+ const attuali=new Set(rate.map(r=>r.id).filter(Boolean));
+ for(const old of [...ed.originali].reverse()){
+   if(!attuali.has(old.id))await rest('scadenze_gruppo',{method:'DELETE',filter:readQuery({id:'eq.'+old.id})});
+ }
+}
+
 async function buildForm(t,record){
  if(!canCreate(SCHEMA[t]))return;
  currentEdit=record;const outer=$('createDetails7');outer.open=!!record;
@@ -1625,6 +1807,7 @@ async function buildForm(t,record){
  for(const dep of ['stagione_id','allenamento_id','quota_id','uscita_id'])if(formInputs.has(dep)){
   formInputs.get(dep).addEventListener('change',()=>void populateDependents(t,dep));
  }
+ if(t==='gruppi'&&role==='segreteria')await mostraScadenzeNelGruppo7(area,record);
  // Una sola scheda per la Segreteria: il certificato resta nella tabella riservata.
  if(t==='atleti'&&role==='segreteria'){
   const etichetta=document.createElement('label');
@@ -1743,6 +1926,7 @@ async function saveRecord(event){
  const t=section;
  try{
   const payload=formData7(t);
+  const rateDaSalvare=t==='gruppi'&&role==='segreteria'?leggiRateGruppo7():null;
   // Prima del salvataggio: non ammettere lo stesso genitore in entrambe le caselle.
   if(t==='atleti'&&role==='segreteria'){
    const uno=formInputs.get('genitore_scheda_1'),due=formInputs.get('genitore_scheda_2');
@@ -1758,6 +1942,11 @@ async function saveRecord(event){
   if(currentEdit)changed=await rest(t,{method:'PATCH',filter:dbFilterFor(t,currentEdit),body:payload});
   else changed=await rest(t,{method:'POST',filter:'select=*',body:payload});
   if(!Array.isArray(changed)||changed.length===0)throw Error('Il database non ha restituito alcuna riga salvata. Controlla i permessi e i dati.');
+  // Solo modello delle rate: non crea quote individuali né versa denaro.
+  let erroreRateGruppo=null;
+  if(t==='gruppi'&&role==='segreteria'){
+    try{await salvaRateGruppo7(changed[0].id,rateDaSalvare);}catch(e){erroreRateGruppo=e.message;}
+  }
   // Salvare prima l'atleta, poi la scadenza in certificati_medici: mai nel record atleti.
   let erroreCertificato=null;
   if(t==='atleti'&&role==='segreteria'){
@@ -1812,9 +2001,10 @@ async function saveRecord(event){
   lookups.clear();displayLookups.clear();displayLookupsReady.clear();currentEdit=null;
   await loadModule(t);
   const problemi=[];
+  if(erroreRateGruppo)problemi.push('Scadenze del gruppo non completate: '+erroreRateGruppo);
   if(erroreCertificato)problemi.push('Scadenza certificato non salvata: '+erroreCertificato);
   if(erroreGenitori)problemi.push('Collegamento genitori non completato: '+erroreGenitori);
-  if(problemi.length)notify('Atleta salvato, ma '+problemi.join(' | ')+'. Controlla i moduli dedicati.','error');
+  if(problemi.length)notify(SCHEMA[t].label+' salvato, ma '+problemi.join(' | ')+'. Controlla la scheda.','error');
   else notify('Salvataggio riuscito su Supabase · '+SCHEMA[t].label,'good');
  }catch(e){notify('Salvataggio non riuscito: '+e.message,'error')}
  finally{busy=false;b.disabled=false}
@@ -1822,6 +2012,7 @@ async function saveRecord(event){
 async function deleteRecord(t,rec){
  if(!canDelete(t)||busy)return;
  const label=rowName(t,rec);const warning=['atleti','gruppi','allenamenti','uscite','pulmini','quote_atleti','pacchetti_uscite','anagrafica_genitori','anagrafica_genitori_atleti'].includes(t)?'ATTENZIONE: potrebbero essere eliminati anche dati collegati (vincoli ON DELETE CASCADE). ':'';
+ if(t==='gruppi')notify('Verifica che il gruppo non abbia atleti, scadenze o pagamenti collegati prima di eliminarlo.','info');
  if(!confirm(warning+'Eliminare definitivamente «'+label+'» da '+SCHEMA[t].label+'? Questa operazione modifica il database reale e potrebbe essere irreversibile.'))return;
  busy=true;
  try{
