@@ -314,6 +314,28 @@ const SC=JSON.parse($('schema7').textContent), SCHEMA=SC.schema,FOREIGN=SC.forei
     campi.push({nome:'anno_nascita',tipo:'smallint'});
   }
 }
+// Moduli anagrafici beta: separati dagli account Auth e dai legami genitori_atleti gia' esistenti.
+SCHEMA.anagrafica_genitori={
+  label:'Anagrafica genitori',group:'Anagrafiche',view:false,
+  read:['segreteria'],write:['segreteria'],pk:['id'],
+  fields:[
+    {nome:'id',tipo:'uuid',default:'gen_random_uuid()',obbligatorio:true},
+    {nome:'nome',tipo:'text',default:null,obbligatorio:true},
+    {nome:'cognome',tipo:'text',default:null,obbligatorio:true},
+    {nome:'telefono',tipo:'text',default:null,obbligatorio:false},
+    {nome:'email',tipo:'text',default:null,obbligatorio:false}
+  ]
+};
+SCHEMA.anagrafica_genitori_atleti={
+  label:'Collega genitori e atleti',group:'Anagrafiche',view:false,
+  read:['segreteria'],write:['segreteria'],
+  pk:['genitore_anagrafica_id','atleta_id'],
+  fields:[
+    {nome:'genitore_anagrafica_id',tipo:'uuid',default:null,obbligatorio:true},
+    {nome:'atleta_id',tipo:'uuid',default:null,obbligatorio:true}
+  ]
+};
+FOREIGN.genitore_anagrafica_id='anagrafica_genitori';
 const ROLES={segreteria:'Segreteria',allenatore:'Allenatore',genitore:'Genitore',direttivo:'Direttivo'};
 const PUBLIC_SUPABASE_URL='https://kfznxbkmtiuwfkfjywpp.supabase.co', PUBLIC_SUPABASE_KEY='sb_publishable_pVaWmtsF153WLqMsfroCbw_JPmImn2H';
 const SESSION_KEY='7k_fixed_project_session_v1';
@@ -367,15 +389,19 @@ function legalModules(){return Object.entries(SCHEMA).filter(([k,m])=>m.read.inc
 function canCreate(m){return m.write.includes(role) && !m.view;}
 function canEdit(t){return SCHEMA[t].write.includes(role) && !SCHEMA[t].view && !['letture_comunicazioni'].includes(t) && !(role==='genitore'&&t==='prenotazioni_pulmini');}
 function canDelete(t){return role==='segreteria' && SCHEMA[t].write.includes(role) && !['stagioni','profili','letture_comunicazioni'].includes(t);}
-function fieldTitle(f){return f.replace(/_id$/,'').replace(/_/g,' ').replace(/\b\w/g,x=>x.toUpperCase())}
+function fieldTitle(f){if(f==='genitore_anagrafica_id')return 'Genitore';if(f==='comune_residenza')return 'Comune di residenza';if(f==='anno_nascita')return 'Anno di nascita';return f.replace(/_id$/,'').replace(/_/g,' ').replace(/\b\w/g,x=>x.toUpperCase())}
 function fieldDescription(t,f){const map={'stagioni.archiviata':'Archiviare una stagione blocca le modifiche secondo le regole del database.',
  'materiali.url':'Indirizzo HTTPS del materiale; il caricamento diretto di file non è disponibile.',
  'certificati_medici.data_scadenza':'Qui si registra la data di scadenza, non il documento sanitario.',
  'profili.ruolo':'I ruoli sono stabiliti dal database e non possono essere cambiati da questa pagina.',
  'prenotazioni_pulmini.stato':'Lo stato confermata deve essere verificato rispetto ai posti disponibili; la pagina non garantisce automaticamente la capienza.',
- 'comunicazioni.messaggio':'Registra la comunicazione sul sito; non invia automaticamente SMS, email o WhatsApp.'};return map[t+'.'+f]||''}
+  'comunicazioni.messaggio':'Registra la comunicazione sul sito; non invia automaticamente SMS, email o WhatsApp.',
+  'anagrafica_genitori.email':'L’email non crea un account e non invia inviti. Gli accessi restano disabilitati fino all’invito.',
+  'anagrafica_genitori_atleti.genitore_anagrafica_id':'Seleziona un genitore registrato nell’Anagrafica genitori.',
+  'anagrafica_genitori_atleti.atleta_id':'Seleziona l’atleta da associare. Ripeti per collegare un secondo genitore.'};return map[t+'.'+f]||''}
 const meaningful=(f)=>f.length>27?f.slice(0,24)+'…':f;
 function formatLabel(t,r){
+  if(t==='anagrafica_genitori')return [r.cognome,r.nome].filter(Boolean).join(' ').trim() || 'Genitore senza nome';
  if(t==='atleti')return `${r.cognome||''} ${r.nome||''}`.trim();
  if(t==='profili')return [r.nome,r.cognome].filter(Boolean).join(' ').trim() || `${ROLES[r.ruolo]||r.ruolo||'Utente'} · ${String(r.id||'').slice(0,8)}…`; `${ROLES[r.ruolo]||r.ruolo||'Utente'} · ${String(r.id||'').slice(0,8)}…`;
  if(t==='allenamenti')return `${r.data||''} ${String(r.ora||'').slice(0,5)} · ${r.luogo||''}`;
@@ -1203,6 +1229,8 @@ function moduleAdvice(t){
  materiali:'Si registrano link HTTPS a materiali, documenti e video. Non viene eseguito l’upload dei file su Supabase Storage.',
  comunicazioni:'Le comunicazioni vengono salvate sul database; non partono notifiche push, WhatsApp, SMS o email automatiche.',
  letture_comunicazioni:'Registra una conferma di lettura per una comunicazione visibile al tuo account, se consentito dalle policy.',
+  'anagrafica_genitori':'Inserisci i recapiti dei genitori anche senza account. Questo modulo NON crea accessi e non invia email. I dati sono visibili solo alla Segreteria.',
+  'anagrafica_genitori_atleti':'Associa un genitore anagrafico a un atleta: per due genitori crea due collegamenti. Non abilita l’accesso alla Area Genitori.',
  profili:'I profili sono gestiti a livello Supabase; nessun cambio di ruolo dal browser.'
  };return instructions[t]||'Inserimenti, modifiche e cancellazioni disponibili in base al ruolo e alle policy RLS di Supabase. Le operazioni sono reali; usa dati fittizi durante il collaudo.'
 }
@@ -1435,7 +1463,7 @@ function makeControl(t,f,value){
  else if(f.tipo.includes('time without')){control=document.createElement('input');control.type='time'}
  else if(['integer','bigint','numeric'].includes(f.tipo)){control=document.createElement('input');control.type='number';control.step=f.tipo==='numeric'?'0.01':'1';}
  else if(['note','messaggio','descrizione','attrezzatura'].includes(f.nome)){control=document.createElement('textarea');control.maxLength=3000;}
- else{control=document.createElement('input');control.type=f.nome==='url'?'url':'text';control.maxLength=500;}
+ else{control=document.createElement('input');control.type=f.nome==='url'?'url':f.nome==='email'?'email':f.nome==='telefono'?'tel':'text';control.maxLength=500;}
  control.name=f.nome;control.id='field7_'+f.nome;
  if(value!==null&&value!==undefined&&!FOREIGN[f.nome]){control.value=String(value).slice(0,f.tipo.includes('time without')?5:undefined)}
  if(!hasDefault(f)&&f.obbligatorio&&value===null)control.required=true;
@@ -1500,7 +1528,7 @@ async function populateForeign(t,field,keepValue){
  if(keepValue!==null&&keepValue!==undefined){
   if(![...ctl.options].some(o=>o.value===String(keepValue))){const old=document.createElement('option');old.value=String(keepValue);old.textContent='Valore già assegnato · '+String(keepValue).slice(0,8)+'…';ctl.append(old)}
   ctl.value=String(keepValue);
- }else if(ctl.options.length>1)ctl.selectedIndex=1;
+ }else if(ctl.options.length>1 && t!=='anagrafica_genitori_atleti')ctl.selectedIndex=1;
  if(!ctl.value && SCHEMA[t].fields.find(f=>f.nome===field)?.obbligatorio)ctl.required=true;
 }
 async function populateDependents(t,field){
@@ -1565,7 +1593,7 @@ async function saveRecord(event){
 }
 async function deleteRecord(t,rec){
  if(!canDelete(t)||busy)return;
- const label=rowName(t,rec);const warning=['atleti','gruppi','allenamenti','uscite','pulmini','quote_atleti','pacchetti_uscite'].includes(t)?'ATTENZIONE: potrebbero essere eliminati anche dati collegati (vincoli ON DELETE CASCADE). ':'';
+ const label=rowName(t,rec);const warning=['atleti','gruppi','allenamenti','uscite','pulmini','quote_atleti','pacchetti_uscite','anagrafica_genitori','anagrafica_genitori_atleti'].includes(t)?'ATTENZIONE: potrebbero essere eliminati anche dati collegati (vincoli ON DELETE CASCADE). ':'';
  if(!confirm(warning+'Eliminare definitivamente «'+label+'» da '+SCHEMA[t].label+'? Questa operazione modifica il database reale e potrebbe essere irreversibile.'))return;
  busy=true;
  try{
