@@ -1895,6 +1895,41 @@ async function creaPianoAtleta7(atleta){
  }
  return {creata:!dati.quota,quotaId:quota.id};
 }
+// Riallineamento controllato delle quote automatiche dopo una variazione del trasporto.
+// Non tocca MAI versamenti, quote manuali o piani già incassati.
+function verificaRiallineamento7(d,atleta){
+ const {atteso,importi}=controllaModelloGruppo7(d,atleta);
+ if(!d.quota)throw Error('Nessuna quota automatica da riallineare. Attiva prima le rate per questo atleta.');
+ if(d.quote.some(q=>q.id!==d.quota.id))throw Error('Esistono quote aggiuntive: verifica i dati in Quote atleti prima di procedere.');
+ if(d.versamenti.length)throw Error('Sono già registrati versamenti: modifica il piano soltanto dopo una verifica amministrativa. Nessun pagamento viene cancellato.');
+ if(d.rate.length!==d.piano.length)throw Error('Le rate esistenti non sono complete: non posso correggerle automaticamente.');
+ const presenti=new Set();
+ for(const r of d.rate){
+   if(!Number.isInteger(Number(r.numero_rata))||presenti.has(Number(r.numero_rata))||!d.piano.some(p=>p.numero_rata===r.numero_rata))
+     throw Error('Numerazione delle rate non coerente: verifica il piano prima di procedere.');
+   presenti.add(Number(r.numero_rata));
+ }
+ return {atteso,importi};
+}
+async function riallineaPianoAtleta7(atleta,datiPrecaricati=null){
+ if(role!=='segreteria')throw Error('Funzione riservata alla Segreteria.');
+ // Rilettura fresca per non sovrascrivere una rata pagata da un'altra sessione.
+ const d=datiPrecaricati||await datiFinanzeAtleta7(atleta);
+ const {atteso,importi}=verificaRiallineamento7(d,atleta);
+ const scadenza=d.piano[d.piano.length-1].data_scadenza;
+ if(cent7(d.quota.importo_totale)!==atteso||d.quota.data_scadenza!==scadenza){
+   const updated=await rest('quote_atleti',{method:'PATCH',filter:readQuery({id:'eq.'+d.quota.id,select:'*'}),body:{importo_totale:atteso/100,data_scadenza:scadenza}});
+   if(!Array.isArray(updated)||updated.length!==1)throw Error('Aggiornamento quota non confermato. Ricarica e controlla prima di registrare pagamenti.');
+ }
+ for(let i=0;i<d.piano.length;i++){
+   const modello=d.piano[i];
+   const rata=d.rate.find(x=>x.numero_rata===modello.numero_rata);
+   if(cent7(rata.importo)===importi[i]&&rata.data_scadenza===modello.data_scadenza)continue;
+   const updated=await rest('rate_quote',{method:'PATCH',filter:readQuery({id:'eq.'+rata.id,select:'*'}),body:{importo:importi[i]/100,data_scadenza:modello.data_scadenza}});
+   if(!Array.isArray(updated)||updated.length!==1)throw Error('Aggiornamento rata '+modello.numero_rata+' non confermato. Riprova il riallineamento prima di registrare pagamenti.');
+ }
+ return {atteso};
+}
 async function mostraFinanzeAtleta7(area,atleta){
  if(role!=='segreteria')return;
  const panel=document.createElement('section');panel.className='atleta7-finanze';
@@ -1938,6 +1973,25 @@ async function mostraFinanzeAtleta7(area,atleta){
        return !modello||cent7(r.importo)!==importi[r.numero_rata-1]||r.data_scadenza!==modello.data_scadenza;
      }));
      if(pianoModificato)corpo.append(text('p','ATTENZIONE: le rate individuali non coincidono con il modello del gruppo oppure ne manca una. Non confermare pagamenti finché il piano non è allineato.','atleta7-warning'));
+     if(d.quota&&(cent7(d.quota.importo_totale)!==atteso||pianoModificato)){
+       if(d.versamenti.length===0&&d.quote.length===1&&d.rate.length===d.piano.length){
+         const riallinea=text('button','Riallinea quota e rate al trasporto','cellBtn7');
+         riallinea.type='button';
+         riallinea.onclick=async()=>{
+           if(!confirm('Ricalcolare quota e rate dell’atleta secondo il suo trasporto attuale? Nessun versamento verrà creato; l’operazione è consentita solo se non esistono pagamenti.'))return;
+           riallinea.disabled=true;
+           try{
+             await riallineaPianoAtleta7(atleta);
+             notify('Quota e rate riallineate al gruppo e al trasporto.','good');
+           }catch(e){notify('Riallineamento non completato: '+e.message,'error');}
+           await carica();
+         };
+         corpo.append(riallinea);
+       }else if(d.versamenti.length){
+         corpo.append(text('p','Piano già pagato almeno in parte: la modifica delle quote richiede verifica della Segreteria, senza cancellare lo storico.','atleta7-warning'));
+       }
+     }
+
      const genericPayments=d.versamenti.filter(v=>!v.rata_id);
      if(genericPayments.length)corpo.append(text('p','Attenzione: ci sono versamenti senza rata associata. Verifica in Versamenti prima di spuntare le rate.','atleta7-warning'));
      const scroll=document.createElement('div');scroll.className='atleta7-scroll';
@@ -2146,6 +2200,19 @@ async function saveRecord(event){
  try{
   const payload=formData7(t);
   const rateDaSalvare=t==='gruppi'&&role==='segreteria'?leggiRateGruppo7():null;
+  const trasportoModificato=t==='atleti'&&role==='segreteria'&&!!currentEdit?.id&&
+    (currentEdit.usa_trasporto===true)!==(payload.usa_trasporto===true);
+  if(trasportoModificato){
+    const precedente=await datiFinanzeAtleta7(currentEdit);
+    if(precedente.quota){
+      if(payload.gruppo_id!==currentEdit.gruppo_id)
+        throw Error('Per cambiare contemporaneamente gruppo e trasporto di un atleta con quote attive, verifica prima il piano economico.');
+      verificaRiallineamento7(precedente,{...currentEdit,...payload});
+    }else if(precedente.quote.length){
+      throw Error('Sono già presenti quote manuali: controlla prima la situazione economica dell’atleta.');
+    }
+  }
+
   // Prima del salvataggio: non ammettere lo stesso genitore in entrambe le caselle.
   if(t==='atleti'&&role==='segreteria'){
    const uno=formInputs.get('genitore_scheda_1'),due=formInputs.get('genitore_scheda_2');
@@ -2161,6 +2228,16 @@ async function saveRecord(event){
   if(currentEdit)changed=await rest(t,{method:'PATCH',filter:dbFilterFor(t,currentEdit),body:payload});
   else changed=await rest(t,{method:'POST',filter:'select=*',body:payload});
   if(!Array.isArray(changed)||changed.length===0)throw Error('Il database non ha restituito alcuna riga salvata. Controlla i permessi e i dati.');
+  // Dopo il salvataggio di Trasporto Sì/No, riallinea le rate automatiche non pagate.
+  // Se il riallineamento si interrompe, avvisa: mai confermare rate finché il piano non coincide.
+  let erroreRiallineamento=null;
+  if(trasportoModificato){
+    try{
+      const nuovoAtleta={...currentEdit,...changed[0]};
+      const controllo=await datiFinanzeAtleta7(nuovoAtleta);
+      if(controllo.quota)await riallineaPianoAtleta7(nuovoAtleta,controllo);
+    }catch(e){erroreRiallineamento=e.message;}
+  }
   // Solo modello delle rate: non crea quote individuali né versa denaro.
   let erroreRateGruppo=null;
   if(t==='gruppi'&&role==='segreteria'){
@@ -2220,6 +2297,7 @@ async function saveRecord(event){
   lookups.clear();displayLookups.clear();displayLookupsReady.clear();currentEdit=null;
   await loadModule(t);
   const problemi=[];
+  if(erroreRiallineamento)problemi.push('Trasporto salvato ma quota e rate da riallineare: '+erroreRiallineamento);
   if(erroreRateGruppo)problemi.push('Scadenze del gruppo non completate: '+erroreRateGruppo);
   if(erroreCertificato)problemi.push('Scadenza certificato non salvata: '+erroreCertificato);
   if(erroreGenitori)problemi.push('Collegamento genitori non completato: '+erroreGenitori);
