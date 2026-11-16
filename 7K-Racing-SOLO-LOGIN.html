@@ -303,6 +303,17 @@ body.genitore-ui .scheda-riepilogo7 .contenuto {
 /* 7K Racing - applicazione di sviluppo unica. Solo Supabase Auth/REST; no service_role, no dati fittizi/localStorage applicativo. */
 const $=id=>document.getElementById(id);
 const SC=JSON.parse($('schema7').textContent), SCHEMA=SC.schema,FOREIGN=SC.foreign;
+  if(SCHEMA.atleti && SCHEMA.atleti.fields){
+  const campi=SCHEMA.atleti.fields;
+
+  if(!campi.some(f=>f.nome==='comune_residenza')){
+    campi.push({nome:'comune_residenza',tipo:'text'});
+  }
+
+  if(!campi.some(f=>f.nome==='anno_nascita')){
+    campi.push({nome:'anno_nascita',tipo:'smallint'});
+  }
+}
 const ROLES={segreteria:'Segreteria',allenatore:'Allenatore',genitore:'Genitore',direttivo:'Direttivo'};
 const PUBLIC_SUPABASE_URL='https://kfznxbkmtiuwfkfjywpp.supabase.co', PUBLIC_SUPABASE_KEY='sb_publishable_pVaWmtsF153WLqMsfroCbw_JPmImn2H';
 const SESSION_KEY='7k_fixed_project_session_v1';
