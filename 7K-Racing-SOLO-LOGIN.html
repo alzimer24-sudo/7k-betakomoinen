@@ -1094,12 +1094,12 @@ let inviti7Dati=[],inviti7Busy=false,inviti7Serial=0;
 const inviti7Mail=v=>String(v||'').trim().toLowerCase();
 const inviti7Crea=(tag,val,cls)=>{const el=document.createElement(tag);if(val!==undefined&&val!==null)el.textContent=val;if(cls)el.className=cls;return el;};
 const inviti7Nome=r=>[r.cognome,r.nome].filter(Boolean).join(' ').trim() || 'Nominativo senza nome';
-const inviti7TipoLabel={genitore:'Genitore',allenatore:'Allenatore',atleta:'Atleta',autista:'Autista'};
-const inviti7Ruoli=[['','— Scegli il ruolo —'],['genitore','Genitore'],['allenatore','Allenatore'],['direttivo','Direttivo'],['autista','Autista'],['atleta','Atleta']];
+const inviti7TipoLabel={genitore:'Genitore',allenatore:'Allenatore',autista:'Autista'};
+const inviti7Ruoli=[['','— Scegli il ruolo —'],['genitore','Genitore'],['allenatore','Allenatore'],['direttivo','Direttivo'],['autista','Autista']];
 const inviti7EmailValida=email=>/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)&&email.length<=250;
 function inviti7Riga(r,tipo){return {
  id:String(r.id||''),tipo,nome:String(r.nome||'').trim(),cognome:String(r.cognome||'').trim(),
- email:inviti7Mail(r.email),ruolo:tipo==='genitore'?'genitore':tipo==='allenatore'?'allenatore':tipo==='atleta'?'atleta':tipo==='autista'?'autista':'',
+ email:inviti7Mail(r.email),ruolo:tipo==='genitore'?'genitore':tipo==='allenatore'?'allenatore':tipo==='autista'?'autista':'',
  selezionato:false,stato:r.profilo_id?'collegato':'',profilo_id:r.profilo_id||null
 };}
 async function apriModuloInvito(){
@@ -1112,13 +1112,12 @@ async function apriModuloInvito(){
  $('search7').value='';$('search7').closest('label').style.display='none';
  const caricamenti=await Promise.allSettled([
   fetchTable('anagrafica_genitori',1000),
-  rest('anagrafica_allenatori',{filter:readQuery({select:'*',limit:'1000'})}),
-  fetchTable('atleti',1000)
+  rest('anagrafica_allenatori',{filter:readQuery({select:'*',limit:'1000'})})
  ]);
  if(serial!==loadSerial||section!=='invita_utenti7')return;
  let elenco=[];const problemi=[];
  for(let i=0;i<caricamenti.length;i++){
-  const tipo=['genitore','allenatore','atleta'][i];const esito=caricamenti[i];
+  const tipo=['genitore','allenatore'][i];const esito=caricamenti[i];
   if(esito.status==='fulfilled')elenco.push(...(esito.value||[]).map(r=>inviti7Riga(r,tipo)));
   else problemi.push(inviti7TipoLabel[tipo]+': '+esito.reason.message);
  }
@@ -1132,12 +1131,12 @@ function inviti7Disegna(problemi=[]){
  if(problemi.length){const warn=inviti7Crea('div','Alcune anagrafiche non sono disponibili: '+problemi.join(' | '),'inviti7-attenzione');root.append(warn);}
  const nota=inviti7Crea('p',null,'muted7');nota.append('Gli inviti sono inviati tramite il servizio Supabase già configurato. ');
  nota.append('Non basta un indirizzo email per autorizzare l’accesso: il ruolo e le autorizzazioni devono essere convalidati dal server. ');
- nota.append('Autista e Atleta sono due ruoli separati. Per utilizzarli serve la migrazione SQL e la nuova Edge Function invita-utente-ruoli presenti nel pacchetto.');
+ nota.append('Gli atleti sono gestiti tramite gli account dei genitori; solo alcuni avranno accesso personale tramite una procedura separata. Non si invitano da questa schermata.');
  root.append(nota);
  // Un autista non deve essere fittiziamente inserito nell'anagrafica atleti/genitori.
  const autoBox=inviti7Crea('div',null,'stat7');
  autoBox.append(inviti7Crea('h3','Aggiungi un autista da invitare'));
- const autoInfo=inviti7Crea('p','Se l’autista non è ancora in anagrafica, inserisci qui nome, cognome ed email. Il ruolo assegnato sarà Autista, mai Atleta.','muted7');autoBox.append(autoInfo);
+ const autoInfo=inviti7Crea('p','Se l’autista non è ancora in anagrafica, inserisci qui nome, cognome ed email.','muted7');autoBox.append(autoInfo);
  const autoGrid=inviti7Crea('div',null,'inputrow');
  const autoInputs={};
  for(const [campo,etichetta,tipoInput] of [['nome','Nome','text'],['cognome','Cognome','text'],['email','Email','email']]){
@@ -1148,7 +1147,7 @@ function inviti7Disegna(problemi=[]){
  autoBox.append(autoGrid);root.append(autoBox);
  const toolbar=inviti7Crea('div',null,'inviti7-toolbar');
  const ricerca=inviti7Crea('input');ricerca.type='search';ricerca.placeholder='Cerca nome, cognome o email';ricerca.setAttribute('aria-label','Cerca persone');
- const filtro=inviti7Crea('select');for(const [v,l] of [['','Tutti'],['genitore','Genitori'],['allenatore','Allenatori'],['atleta','Atleti'],['autista','Autisti da invitare']]){const o=inviti7Crea('option',l);o.value=v;filtro.append(o);}
+ const filtro=inviti7Crea('select');for(const [v,l] of [['','Tutti'],['genitore','Genitori'],['allenatore','Allenatori'],['autista','Autisti da invitare']]){const o=inviti7Crea('option',l);o.value=v;filtro.append(o);}
  const selectedLabel=inviti7Crea('strong','0 selezionati');
  toolbar.append(ricerca,filtro,selectedLabel);root.append(toolbar);
  const wrap=inviti7Crea('div',null,'inviti7-tablewrap');
@@ -1209,13 +1208,13 @@ function inviti7Disegna(problemi=[]){
   for(const r of selected){
    const email=inviti7Mail(r.email);
    if(!r.nome||!r.cognome||!inviti7EmailValida(email)){alert('Controlla nome, cognome ed email di '+inviti7Nome(r)+'.');return;}
-   if(!r.ruolo||!['genitore','allenatore','direttivo','autista','atleta'].includes(r.ruolo)){alert('Seleziona un ruolo valido per '+inviti7Nome(r)+'.');return;}
-   if(r.ruolo==='atleta'&&r.tipo!=='atleta'){alert('Il ruolo Atleta può essere collegato soltanto a una scheda dell’anagrafica Atleti: '+inviti7Nome(r)+'.');return;}
+   if(!r.ruolo||!['genitore','allenatore','direttivo','autista'].includes(r.ruolo)){alert('Seleziona un ruolo valido per '+inviti7Nome(r)+'.');return;}
+   if(!['genitore','allenatore','autista'].includes(r.tipo)){alert('Questa tipologia non può essere invitata da questa schermata.');return;}
 
    if(ids.has(r.tipo+'|'+r.id)||emails.has(email)){alert('Hai selezionato due righe con la stessa email. Invia un solo invito per indirizzo.');return;}
    ids.add(r.tipo+'|'+r.id);emails.add(email);
   }
-  const diversi=selected.filter(r=>r.ruolo!==({genitore:'genitore',allenatore:'allenatore',atleta:'atleta',autista:'autista'}[r.tipo]||''));
+  const diversi=selected.filter(r=>r.ruolo!==({genitore:'genitore',allenatore:'allenatore',autista:'autista'}[r.tipo]||''));
   if(diversi.length && !confirm('ATTENZIONE: hai assegnato un ruolo diverso dall’anagrafica a '+diversi.map(inviti7Nome).join(', ')+'.\nConfermi che queste persone devono davvero ricevere autorizzazioni di un ruolo differente?'))return;
   const dettaglio=selected.map(r=>inviti7Nome(r)+' — '+r.email+' — '+(ROLES[r.ruolo]||r.ruolo)).join('\n');
   if(!confirm('CONFERMI L’INVIO DI '+selected.length+' INVIT'+(selected.length===1?'O':'I')+' REALI?\n\n'+dettaglio+'\n\nOgni persona riceverà una richiesta alla propria email.'))return;
@@ -1226,12 +1225,10 @@ function inviti7Disegna(problemi=[]){
    status.textContent='Invio in corso: '+inviti7Nome(r)+'…';
    try{
     await ensureFresh();
-    // Inviti già in uso invariati. Autista e Atleta passano dalla nuova funzione,
-    // che controlla sul server il ruolo Segreteria e collega la scheda Atleta.
-    const ruoloNuovo=r.ruolo==='autista'||r.ruolo==='atleta';
+    // Gli inviti Autista usano la funzione dedicata; gli altri mantengono il servizio esistente.
+    const ruoloNuovo=r.ruolo==='autista';
     const endpoint=ruoloNuovo?'invita-utente-ruoli':'invita-utente';
     const payload={nome:r.nome,cognome:r.cognome,email:inviti7Mail(r.email),ruolo:r.ruolo};
-    if(r.ruolo==='atleta'){payload.tipo='atleta';payload.anagrafica_id=r.id;}
     const response=await fetch(cfg.url+'/functions/v1/'+endpoint,{
       method:'POST',headers:{'Content-Type':'application/json','apikey':cfg.key,'Authorization':'Bearer '+session.access_token},
       body:JSON.stringify(payload)
