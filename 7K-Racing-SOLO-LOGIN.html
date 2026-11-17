@@ -453,8 +453,12 @@ if(SCHEMA.gruppi?.fields){
 if(SCHEMA.atleti?.fields && !SCHEMA.atleti.fields.some(f=>f.nome==='usa_trasporto')){
  SCHEMA.atleti.fields.push({nome:'usa_trasporto',tipo:'boolean',default:false,obbligatorio:false});
 }
+// Campo distinto dall'ora di partenza: si imposta in Trasferte e uscite.
+if(SCHEMA.uscite?.fields && !SCHEMA.uscite.fields.some(f=>f.nome==='ora_ritrovo')){
+ SCHEMA.uscite.fields.push({nome:'ora_ritrovo',tipo:'time without time zone',default:null,obbligatorio:false});
+}
 FOREIGN.genitore_anagrafica_id='anagrafica_genitori';
-const ROLES={segreteria:'Segreteria',allenatore:'Allenatore',genitore:'Genitore',direttivo:'Direttivo'};
+const ROLES={segreteria:'Segreteria',allenatore:'Allenatore',genitore:'Genitore',direttivo:'Direttivo',autista:'Autista'};
 const PUBLIC_SUPABASE_URL='https://kfznxbkmtiuwfkfjywpp.supabase.co', PUBLIC_SUPABASE_KEY='sb_publishable_pVaWmtsF153WLqMsfroCbw_JPmImn2H';
 const SESSION_KEY='7k_fixed_project_session_v1';
 const enumValues={ 'comunicazioni.destinatari':['tutti','genitori','allenatori','direttivo'], 'materiali.tipo':['video','documento','link'], 'risposte_allenamenti.risposta':['partecipo','non_partecipo'], 'prenotazioni_pulmini.stato':['attesa','confermata'] };
@@ -507,7 +511,7 @@ function legalModules(){return Object.entries(SCHEMA).filter(([k,m])=>m.read.inc
 function canCreate(m){return m.write.includes(role) && !m.view;}
 function canEdit(t){return SCHEMA[t].write.includes(role) && !SCHEMA[t].view && !['letture_comunicazioni'].includes(t) && !(role==='genitore'&&t==='prenotazioni_pulmini');}
 function canDelete(t){return role==='segreteria' && SCHEMA[t].write.includes(role) && !['stagioni','profili','letture_comunicazioni'].includes(t);}
-function fieldTitle(f){if(f==='genitore_anagrafica_id')return 'Genitore';if(f==='comune_residenza')return 'Comune di residenza';if(f==='anno_nascita')return 'Anno di nascita';if(f==='quota_corso')return 'Quota corso (€)';if(f==='quota_trasporto')return 'Quota trasporto stagionale (€)';if(f==='usa_trasporto')return 'Usa il trasporto stagionale?';return f.replace(/_id$/,'').replace(/_/g,' ').replace(/\b\w/g,x=>x.toUpperCase())}
+function fieldTitle(f){if(f==='genitore_anagrafica_id')return 'Genitore';if(f==='comune_residenza')return 'Comune di residenza';if(f==='anno_nascita')return 'Anno di nascita';if(f==='quota_corso')return 'Quota corso (€)';if(f==='quota_trasporto')return 'Quota trasporto stagionale (€)';if(f==='usa_trasporto')return 'Usa il trasporto stagionale?';if(f==='ora_ritrovo')return 'Ora di ritrovo (diversa dalla partenza)';return f.replace(/_id$/,'').replace(/_/g,' ').replace(/\b\w/g,x=>x.toUpperCase())}
 function fieldDescription(t,f){const map={'stagioni.archiviata':'Archiviare una stagione blocca le modifiche secondo le regole del database.',
  'materiali.url':'Indirizzo HTTPS del materiale; il caricamento diretto di file non è disponibile.',
  'certificati_medici.data_scadenza':'Qui si registra la data di scadenza, non il documento sanitario.',
@@ -563,6 +567,12 @@ function renderNav(){
   document.body.classList.toggle('genitore-ui', role==='genitore');
 
  const nav=$('nav7');nav.replaceChildren();const home=text('button','⌂  Dashboard');home.className=section==='dashboard'?'selected7':'';home.onclick=()=>void openSection('dashboard');nav.append(home);
+ if(role==='autista'){
+  nav.append(text('h3','Trasporti'));
+  const b=text('button','🚌 Elenco trasporti');b.type='button';
+  b.className=section==='autista7'?'selected7':'';
+  b.onclick=()=>void apriAutista7();nav.append(b);
+ }
  if(role==='segreteria'){
   nav.append(text('h3','Gestione allenatori'));
   const b=text('button','👨‍🏫 Allenatori');b.type='button';
@@ -1206,6 +1216,51 @@ function inviti7Disegna(problemi=[]){
  };
  renderRows();
 }
+
+// AUTISTA: i dati provengono esclusivamente da una RPC con controllo server sul ruolo.
+// Non legge mai la tabella completa degli atleti o le anagrafiche dei genitori.
+async function apriAutista7(){
+ const serial=++loadSerial;section='autista7';renderNav();
+ show('dashboard7',false);show('moduleBox7',true);show('createDetails7',false);
+ $('moduleGroup7').textContent='TRASPORTI';$('moduleName7').textContent='🚌 Elenco trasporti';
+ $('moduleHelp7').textContent='Solo atleti che hanno risposto Partecipo e richiesto il pulmino per una trasferta extra, senza distinzione di gruppo. Il pulmino stagionale non equivale a una prenotazione.';
+ $('search7').value='';$('search7').closest('label').style.display='none';
+ $('table7').replaceChildren();$('count7').textContent='Caricamento…';$('limitNotice7').textContent='';
+ try{
+  await ensureFresh();
+  const result=await rawReq('/rest/v1/rpc/settek_trasporti_autista',{method:'POST',body:{}});
+  if(serial!==loadSerial||section!=='autista7')return;
+  if(!Array.isArray(result))throw Error('Risposta non valida del server.');
+  const root=$('table7');root.replaceChildren();
+  const top=text('div','','actions7');const aggiorna=text('button','↻ Aggiorna elenco');aggiorna.type='button';aggiorna.onclick=()=>void apriAutista7();top.append(aggiorna);root.append(top);
+  const groups=new Map();
+  for(const r of result){
+   const key=String(r.uscita_id||'')+'|'+String(r.data_uscita||'');
+   if(!groups.has(key))groups.set(key,{trip:r,people:[]});
+   groups.get(key).people.push(r);
+  }
+  for(const {trip,people} of groups.values()){
+   const card=text('div','','stat7');card.style.marginBottom='16px';
+   const heading=text('h3',String(trip.data_uscita||'').split('-').reverse().join('/')+' · '+String(trip.titolo||'Trasferta'));
+   card.append(heading);
+   const where=text('p','📍 Ritrovo: '+(trip.punto_ritrovo||'DA DEFINIRE')+' · 🕒 Ore '+(trip.ora_ritrovo?String(trip.ora_ritrovo).slice(0,5):'DA DEFINIRE'));
+   card.append(where);
+   card.append(text('p','Destinazione: '+(trip.luogo||'—')+' · Partenza: '+(trip.ora_partenza?String(trip.ora_partenza).slice(0,5):'da definire')));
+   card.append(text('strong',people.length+' atlet'+(people.length===1?'a':'i')+' con richiesta pulmino'));
+   const table=document.createElement('table');const header=document.createElement('tr');
+   for(const col of ['Atleta','Gruppo'])header.append(text('th',col));table.append(header);
+   for(const person of people){const tr=document.createElement('tr');
+    tr.append(text('td',[person.cognome,person.nome].filter(Boolean).join(' ')));
+    tr.append(text('td',person.gruppo||'—'));table.append(tr);
+   }
+   card.append(table);root.append(card);
+  }
+  if(!groups.size)root.append(text('p','Nessuna richiesta di pulmino per le prossime trasferte extra.'));
+  $('count7').textContent=groups.size+' trasferte · '+result.length+' atleti con richiesta trasporto';
+ }catch(e){if(serial!==loadSerial)return;$('count7').textContent='Errore caricamento';notify('Elenco Autista: '+e.message,'error');
+  $('table7').replaceChildren(text('p','Controlla di aver eseguito il SQL e di aver configurato il ruolo Autista in Supabase.'));
+ }
+}
  async function loadProfile(){
  if(!session?.user?.id)throw Error('Sessione senza utente autenticato');
  const data=await rest('profili',{filter:readQuery({select:'id,ruolo',id:'eq.'+session.user.id,limit:1})});
@@ -1214,6 +1269,7 @@ function inviti7Disegna(problemi=[]){
  show('app7');show('loginBox7',false);renderNav();
 }
 async function openSection(key){
+ if(role==='autista'){await apriAutista7();return;}
  section=key;currentEdit=null;rows7=[];$('search7').value='';$('search7').closest('label').style.display='';renderNav();
  show('dashboard7',key==='dashboard');show('moduleBox7',key!=='dashboard');
  if(key==='dashboard')await loadDashboard();else if(key==='allenatori_schede7')await allenatori7Carica();else if(key==='calendario_stagionale7')await calendario7Carica();else await loadModule(key);
@@ -3060,7 +3116,7 @@ async function logOut(){
 $('loginForm7').onsubmit=logIn;
 $('logout7').onclick=()=>void logOut();
 $('refresh7').onclick=async()=>{try{lookups.clear();displayLookups.clear();displayLookupsReady.clear();await openSection(section);notify('Dati aggiornati da Supabase.','good')}catch(e){notify(e.message,'error')}};
-$('reloadModule7').onclick=async()=>{lookups.clear();displayLookups.clear();displayLookupsReady.clear();if(section==='allenatori_schede7')await allenatori7Carica();else if(section==='calendario_stagionale7')await calendario7Carica();else if(section==='invita_utenti7')await apriModuloInvito();else await loadModule(section)};
+$('reloadModule7').onclick=async()=>{lookups.clear();displayLookups.clear();displayLookupsReady.clear();if(section==='autista7')await apriAutista7();else if(section==='allenatori_schede7')await allenatori7Carica();else if(section==='calendario_stagionale7')await calendario7Carica();else if(section==='invita_utenti7')await apriModuloInvito();else await loadModule(section)};
 $('recordForm7').onsubmit=saveRecord;
 $('cancelForm7').onclick=()=>{$('createDetails7').open=false;void buildForm(section,null).then(()=>$('createDetails7').open=false)};
 $('search7').oninput=()=>{if(section==='allenatori_schede7')allenatori7Render();else renderDataTable();};
