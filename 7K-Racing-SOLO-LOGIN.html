@@ -493,7 +493,7 @@ async function ensureFresh(){
 }
 async function rest(table,{method='GET',filter='',body=null}={}){
  
-if(!SCHEMA[table] && !['adesioni_uscite_extra','scadenze_gruppo','anagrafica_allenatori','anagrafica_allenatori_gruppi'].includes(table))
+if(!SCHEMA[table] && !['adesioni_uscite_extra','scadenze_gruppo','anagrafica_allenatori','anagrafica_allenatori_gruppi','anagrafica_autisti'].includes(table))
   throw Error('Tabella non prevista nello schema caricato');
 
  await ensureFresh();
@@ -580,10 +580,13 @@ function renderNav(){
   b.onclick=()=>void apriAutista7();nav.append(b);
  }
  if(role==='segreteria'){
-  nav.append(text('h3','Gestione allenatori'));
+  nav.append(text('h3','Gestione personale'));
   const b=text('button','👨‍🏫 Allenatori');b.type='button';
   b.className=section==='allenatori_schede7'?'selected7':'';
   b.onclick=()=>void openSection('allenatori_schede7');nav.append(b);
+  const autisti=text('button','🚌 Autisti');autisti.type='button';
+  autisti.className=section==='autisti_schede7'?'selected7':'';
+  autisti.onclick=()=>void openSection('autisti_schede7');nav.append(autisti);
  }
  let prev=null;
  for(const [key,m] of legalModules()){
@@ -1095,7 +1098,7 @@ const inviti7Mail=v=>String(v||'').trim().toLowerCase();
 const inviti7Crea=(tag,val,cls)=>{const el=document.createElement(tag);if(val!==undefined&&val!==null)el.textContent=val;if(cls)el.className=cls;return el;};
 const inviti7Nome=r=>[r.cognome,r.nome].filter(Boolean).join(' ').trim() || 'Nominativo senza nome';
 const inviti7TipoLabel={genitore:'Genitore',allenatore:'Allenatore',autista:'Autista'};
-const inviti7Ruoli=[['','— Scegli il ruolo —'],['genitore','Genitore'],['allenatore','Allenatore'],['direttivo','Direttivo'],['autista','Autista']];
+const inviti7Ruoli=[['','— Scegli il ruolo —'],['genitore','Genitore'],['allenatore','Allenatore'],['direttivo','Direttivo']];
 const inviti7EmailValida=email=>/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)&&email.length<=250;
 function inviti7Riga(r,tipo){return {
  id:String(r.id||''),tipo,nome:String(r.nome||'').trim(),cognome:String(r.cognome||'').trim(),
@@ -1107,17 +1110,18 @@ async function apriModuloInvito(){
  section='invita_utenti7';const serial=++loadSerial;inviti7Serial=serial;renderNav();
  show('dashboard7',false);show('moduleBox7',true);show('createDetails7',false);
  $('moduleGroup7').textContent='GESTIONE ACCESSI';$('moduleName7').textContent='✉ Invita nuovo utente';
- $('moduleHelp7').textContent='Seleziona le persone già registrate, verifica l’indirizzo email, scegli il ruolo e conferma l’invito. Nessun invio avviene automaticamente.';
+ $('moduleHelp7').textContent='Seleziona le persone già registrate nelle anagrafiche, verifica l’email e conferma l’invito. Gli autisti si inseriscono dalla sezione Autisti; nessun invio è automatico.';
  $('count7').textContent='Caricamento anagrafiche…';$('limitNotice7').textContent='';$('table7').replaceChildren();
  $('search7').value='';$('search7').closest('label').style.display='none';
  const caricamenti=await Promise.allSettled([
   fetchTable('anagrafica_genitori',1000),
-  rest('anagrafica_allenatori',{filter:readQuery({select:'*',limit:'1000'})})
+  rest('anagrafica_allenatori',{filter:readQuery({select:'*',limit:'1000'})}),
+  rest('anagrafica_autisti',{filter:readQuery({select:'*',limit:'1000'})})
  ]);
  if(serial!==loadSerial||section!=='invita_utenti7')return;
  let elenco=[];const problemi=[];
  for(let i=0;i<caricamenti.length;i++){
-  const tipo=['genitore','allenatore'][i];const esito=caricamenti[i];
+  const tipo=['genitore','allenatore','autista'][i];const esito=caricamenti[i];
   if(esito.status==='fulfilled')elenco.push(...(esito.value||[]).map(r=>inviti7Riga(r,tipo)));
   else problemi.push(inviti7TipoLabel[tipo]+': '+esito.reason.message);
  }
@@ -1133,21 +1137,9 @@ function inviti7Disegna(problemi=[]){
  nota.append('Non basta un indirizzo email per autorizzare l’accesso: il ruolo e le autorizzazioni devono essere convalidati dal server. ');
  nota.append('Gli atleti sono gestiti tramite gli account dei genitori; solo alcuni avranno accesso personale tramite una procedura separata. Non si invitano da questa schermata.');
  root.append(nota);
- // Un autista non deve essere fittiziamente inserito nell'anagrafica atleti/genitori.
- const autoBox=inviti7Crea('div',null,'stat7');
- autoBox.append(inviti7Crea('h3','Aggiungi un autista da invitare'));
- const autoInfo=inviti7Crea('p','Se l’autista non è ancora in anagrafica, inserisci qui nome, cognome ed email.','muted7');autoBox.append(autoInfo);
- const autoGrid=inviti7Crea('div',null,'inputrow');
- const autoInputs={};
- for(const [campo,etichetta,tipoInput] of [['nome','Nome','text'],['cognome','Cognome','text'],['email','Email','email']]){
-  const lab=inviti7Crea('label',etichetta);const inp=inviti7Crea('input');inp.type=tipoInput;inp.placeholder=etichetta;inp.setAttribute('aria-label',etichetta+' autista');
-  lab.append(inp);autoGrid.append(lab);autoInputs[campo]=inp;
- }
- const aggiungiAutista=inviti7Crea('button','+ Aggiungi autista');aggiungiAutista.type='button';autoGrid.append(aggiungiAutista);
- autoBox.append(autoGrid);root.append(autoBox);
  const toolbar=inviti7Crea('div',null,'inviti7-toolbar');
  const ricerca=inviti7Crea('input');ricerca.type='search';ricerca.placeholder='Cerca nome, cognome o email';ricerca.setAttribute('aria-label','Cerca persone');
- const filtro=inviti7Crea('select');for(const [v,l] of [['','Tutti'],['genitore','Genitori'],['allenatore','Allenatori'],['autista','Autisti da invitare']]){const o=inviti7Crea('option',l);o.value=v;filtro.append(o);}
+ const filtro=inviti7Crea('select');for(const [v,l] of [['','Tutti'],['genitore','Genitori'],['allenatore','Allenatori'],['autista','Autisti']]){const o=inviti7Crea('option',l);o.value=v;filtro.append(o);}
  const selectedLabel=inviti7Crea('strong','0 selezionati');
  toolbar.append(ricerca,filtro,selectedLabel);root.append(toolbar);
  const wrap=inviti7Crea('div',null,'inviti7-tablewrap');
@@ -1177,7 +1169,9 @@ function inviti7Disegna(problemi=[]){
    const tdMail=inviti7Crea('td');const mail=inviti7Crea('input');mail.type='email';mail.value=r.email;mail.placeholder='nome@esempio.it';mail.setAttribute('aria-label','Email di '+inviti7Nome(r));mail.disabled=!!r.stato||inviti7Busy;
    mail.oninput=()=>{r.email=inviti7Mail(mail.value);};tdMail.append(mail);tr.append(tdMail);
    const tdRole=inviti7Crea('td');const sel=inviti7Crea('select');sel.setAttribute('aria-label','Ruolo di '+inviti7Nome(r));sel.disabled=!!r.stato||inviti7Busy;
-   for(const [v,l] of inviti7Ruoli){const o=inviti7Crea('option',l);o.value=v;sel.append(o);}sel.value=r.ruolo;sel.onchange=()=>{r.ruolo=sel.value;};tdRole.append(sel);tr.append(tdRole);
+   if(r.tipo==='autista'){tdRole.append(inviti7Crea('strong','Autista'));}else{
+    for(const [v,l] of inviti7Ruoli){const o=inviti7Crea('option',l);o.value=v;sel.append(o);}sel.value=r.ruolo;sel.onchange=()=>{r.ruolo=sel.value;};tdRole.append(sel);
+   }tr.append(tdRole);
    const desc=r.stato==='collegato'?'Account collegato':r.stato==='inviato'?'Richiesta inviata':r.stato==='errore'?'Errore di invio':'Da invitare';
    tr.append(inviti7Crea('td',desc));tbody.append(tr);
   }
@@ -1185,17 +1179,6 @@ function inviti7Disegna(problemi=[]){
   $('count7').textContent=vis.length+' nominativi visualizzati su '+inviti7Dati.length;
   updateSelection();
  }
- aggiungiAutista.onclick=()=>{
-  const nome=String(autoInputs.nome.value||'').trim();
-  const cognome=String(autoInputs.cognome.value||'').trim();
-  const email=inviti7Mail(autoInputs.email.value);
-  if(!nome||!cognome||!inviti7EmailValida(email)){alert('Inserisci nome, cognome e un indirizzo email valido per l’autista.');return;}
-  if(inviti7Dati.some(r=>inviti7Mail(r.email)===email)){alert('Questa email compare già nell’elenco. Seleziona la persona esistente e assegna il ruolo Autista.');return;}
-  const id='autista-manuale-'+(Date.now())+'-'+(inviti7Dati.length);
-  inviti7Dati.push({id,tipo:'autista',nome,cognome,email,ruolo:'autista',selezionato:true,stato:'',profilo_id:null});
-  autoInputs.nome.value='';autoInputs.cognome.value='';autoInputs.email.value='';
-  filtro.value='';ricerca.value='';renderRows();
- };
  ricerca.oninput=renderRows;filtro.onchange=renderRows;
  clear.onclick=()=>{for(const r of inviti7Dati)r.selezionato=false;renderRows();};
  refresh.onclick=()=>void apriModuloInvito();
@@ -1208,7 +1191,7 @@ function inviti7Disegna(problemi=[]){
   for(const r of selected){
    const email=inviti7Mail(r.email);
    if(!r.nome||!r.cognome||!inviti7EmailValida(email)){alert('Controlla nome, cognome ed email di '+inviti7Nome(r)+'.');return;}
-   if(!r.ruolo||!['genitore','allenatore','direttivo','autista'].includes(r.ruolo)){alert('Seleziona un ruolo valido per '+inviti7Nome(r)+'.');return;}
+   if(!r.ruolo||!['genitore','allenatore','direttivo','autista'].includes(r.ruolo)|| (r.tipo==='autista'&&r.ruolo!=='autista')){alert('Seleziona un ruolo valido per '+inviti7Nome(r)+'.');return;}
    if(!['genitore','allenatore','autista'].includes(r.tipo)){alert('Questa tipologia non può essere invitata da questa schermata.');return;}
 
    if(ids.has(r.tipo+'|'+r.id)||emails.has(email)){alert('Hai selezionato due righe con la stessa email. Invia un solo invito per indirizzo.');return;}
@@ -1331,7 +1314,7 @@ async function openSection(key){
  if(role==='atleta'){await apriMioAtleta7();return;}
  section=key;currentEdit=null;rows7=[];$('search7').value='';$('search7').closest('label').style.display='';renderNav();
  show('dashboard7',key==='dashboard');show('moduleBox7',key!=='dashboard');
- if(key==='dashboard')await loadDashboard();else if(key==='allenatori_schede7')await allenatori7Carica();else if(key==='calendario_stagionale7')await calendario7Carica();else await loadModule(key);
+ if(key==='dashboard')await loadDashboard();else if(key==='allenatori_schede7')await allenatori7Carica();else if(key==='autisti_schede7')await autisti7Carica();else if(key==='calendario_stagionale7')await calendario7Carica();else await loadModule(key);
  schedeAllenamenti7();
 }
 async function loadDashboard(){
@@ -2950,6 +2933,102 @@ async function allenatori7Carica(){
  }
 }
 
+
+/* Anagrafica autisti — separata da atleti, genitori e dalla procedura inviti. */
+const AUTISTI7_SEZIONE='autisti_schede7';
+let autisti7Dati=[],autisti7Busy=false,autisti7Serial=0;
+const autisti7Nome=a=>[a.cognome,a.nome].filter(Boolean).join(' ').trim();
+function autisti7Pulisci(){const f=$('autisti7-form');if(f)f.remove();}
+function autisti7Modulo(a=null){
+ if(role!=='segreteria'||section!==AUTISTI7_SEZIONE)return;
+ autisti7Pulisci();
+ const form=document.createElement('form');form.id='autisti7-form';form.className='allenatori7-form';
+ form.append(allenatori7El('h3',a?'Modifica autista':'Nuovo autista'));
+ form.append(allenatori7El('p','La scheda viene salvata su Supabase. Per mandare l’email di accesso, vai successivamente su «Invita nuovo utente».','muted7'));
+ const grid=allenatori7El('div',null,'allenatori7-fields');const campi={};
+ for(const [key,label,req,type] of [['nome','Nome',true,'text'],['cognome','Cognome',true,'text'],['email','Email per invito',true,'email'],['telefono','Telefono',false,'tel']]){
+  const campo=allenatori7Campo(label,a?.[key],req,type);campo.input.name=key;campi[key]=campo.input;grid.append(campo.label);
+ }
+ form.append(grid);
+ const actions=allenatori7El('div',null,'actions7');
+ const save=allenatori7Bottone(a?'Salva modifiche':'Salva autista',()=>{},'primary7');save.type='submit';
+ actions.append(save,allenatori7Bottone('Annulla',autisti7Pulisci));form.append(actions);
+ form.onsubmit=async e=>{
+  e.preventDefault();if(autisti7Busy)return;
+  const payload={nome:campi.nome.value.trim(),cognome:campi.cognome.value.trim(),email:inviti7Mail(campi.email.value),telefono:campi.telefono.value.trim()||null};
+  if(!payload.nome||!payload.cognome||!inviti7EmailValida(payload.email)){notify('Compila nome, cognome ed email valida dell’autista.','error');return;}
+  if(autisti7Dati.some(x=>x.id!==a?.id&&inviti7Mail(x.email)===payload.email)){notify('Questa email è già associata a un autista.','error');return;}
+  autisti7Busy=true;save.disabled=true;
+  try{
+   const result=a
+    ?await rest('anagrafica_autisti',{method:'PATCH',filter:readQuery({id:'eq.'+a.id,select:'*'}),body:payload})
+    :await rest('anagrafica_autisti',{method:'POST',filter:'select=*',body:payload});
+   if(!Array.isArray(result)||result.length!==1)throw Error('Salvataggio non confermato da Supabase.');
+   autisti7Pulisci();await autisti7Carica();
+   notify('Autista salvato. Ora compare nell’elenco «Invita nuovo utente». Nessuna email è stata inviata.','good');
+  }catch(err){notify('Impossibile salvare l’autista: '+err.message,'error');}
+  finally{autisti7Busy=false;save.disabled=false;}
+ };
+ $('table7').prepend(form);form.scrollIntoView({block:'start',behavior:'smooth'});
+}
+async function autisti7Elimina(a){
+ if(role!=='segreteria'||autisti7Busy)return;
+ if(a.profilo_id){notify('Questo autista ha già un account collegato: la scheda non può essere eliminata da qui.','error');return;}
+ if(!confirm('Eliminare la scheda di '+autisti7Nome(a)+'? Non viene eliminato alcun account né annullato un invito già spedito.'))return;
+ autisti7Busy=true;
+ try{
+  const data=await rest('anagrafica_autisti',{method:'DELETE',filter:readQuery({id:'eq.'+a.id,select:'*'})});
+  if(!Array.isArray(data)||data.length!==1)throw Error('Eliminazione non confermata da Supabase.');
+  await autisti7Carica();notify('Scheda autista eliminata.','good');
+ }catch(err){notify('Eliminazione non riuscita: '+err.message,'error');}
+ finally{autisti7Busy=false;}
+}
+function autisti7Render(){
+ if(role!=='segreteria'||section!==AUTISTI7_SEZIONE)return;
+ const root=$('table7');root.replaceChildren();
+ const bar=allenatori7El('div',null,'allenatori7-actions');
+ bar.append(allenatori7Bottone('＋ Nuovo autista',()=>autisti7Modulo(),'primary7'));
+ bar.append(allenatori7El('span','Prima salva la scheda, poi invia l’invito dalla schermata dedicata.','muted7'));
+ root.append(bar);
+ const query=$('search7').value.trim().toLocaleLowerCase('it');
+ const shown=autisti7Dati.filter(a=>[a.nome,a.cognome,a.email,a.telefono].some(v=>String(v||'').toLocaleLowerCase('it').includes(query)));
+ $('count7').textContent=shown.length+' autist'+(shown.length===1?'a':'i')+' mostrati';
+ if(!autisti7Dati.length)root.append(allenatori7El('p','Nessun autista in anagrafica. Usa «Nuovo autista» per iniziare.','muted7'));
+ else if(!shown.length)root.append(allenatori7El('p','Nessun autista corrisponde alla ricerca.','muted7'));
+ const list=allenatori7El('div',null,'allenatori7-lista');
+ for(const a of shown.sort((u,v)=>autisti7Nome(u).localeCompare(autisti7Nome(v),'it'))){
+  const card=allenatori7El('article',null,'allenatori7-card');const header=allenatori7El('div',null,'allenatori7-cardhead');
+  header.append(allenatori7El('h3',autisti7Nome(a)));
+  header.append(allenatori7El('span',a.profilo_id?'Account collegato':'Senza account collegato','allenatori7-stato'));
+  card.append(header);
+  card.append(allenatori7El('p',a.email,'muted7'));
+  if(a.telefono)card.append(allenatori7El('p','Telefono: '+a.telefono,'muted7'));
+  const buttons=allenatori7El('div',null,'actions7');
+  buttons.append(allenatori7Bottone('Modifica',()=>autisti7Modulo(a)));
+  if(!a.profilo_id)buttons.append(allenatori7Bottone('Elimina',()=>void autisti7Elimina(a),'allenatori7-danger'));
+  card.append(buttons);list.append(card);
+ }
+ root.append(list);$('limitNotice7').textContent=autisti7Dati.length>=1000?'La lista raggiunge il limite di lettura (1000).':' ';
+}
+async function autisti7Carica(){
+ if(role!=='segreteria')return;
+ const serial=++autisti7Serial;
+ $('moduleGroup7').textContent='ANAGRAFICHE';$('moduleName7').textContent='Autisti';
+ $('moduleHelp7').textContent='Inserisci e gestisci gli autisti. Dopo il salvataggio compaiono nella lista degli inviti; l’invito non parte automaticamente.';
+ show('createDetails7',false);$('createDetails7').open=false;
+ $('count7').textContent='Caricamento autisti…';$('limitNotice7').textContent='';$('table7').replaceChildren();
+ try{
+  const data=await fetchTable('anagrafica_autisti',1000);
+  if(serial!==autisti7Serial||section!==AUTISTI7_SEZIONE)return;
+  autisti7Dati=data;autisti7Render();
+ }catch(err){
+  if(serial!==autisti7Serial||section!==AUTISTI7_SEZIONE)return;
+  $('count7').textContent='Sezione non disponibile';
+  $('table7').replaceChildren(allenatori7El('p','Per usare questa sezione, esegui prima la SQL «Anagrafica autisti» in Supabase.','muted7'),allenatori7El('p','Dettaglio: '+err.message,'err7'));
+  notify('Autisti non caricati: '+err.message,'error');
+ }
+}
+
 /* 7K Racing — Calendario stagionale per gruppo. Riutilizza public.allenamenti. */
 const calendario7Oggi=()=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Rome',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 const calendario7FormatDate=d=>d?String(d).slice(0,10).split('-').reverse().join('/'):'—';
@@ -3178,7 +3257,7 @@ $('refresh7').onclick=async()=>{try{lookups.clear();displayLookups.clear();displ
 $('reloadModule7').onclick=async()=>{lookups.clear();displayLookups.clear();displayLookupsReady.clear();if(section==='autista7')await apriAutista7();else if(section==='mio_atleta7')await apriMioAtleta7();else if(section==='allenatori_schede7')await allenatori7Carica();else if(section==='calendario_stagionale7')await calendario7Carica();else if(section==='invita_utenti7')await apriModuloInvito();else await loadModule(section)};
 $('recordForm7').onsubmit=saveRecord;
 $('cancelForm7').onclick=()=>{$('createDetails7').open=false;void buildForm(section,null).then(()=>$('createDetails7').open=false)};
-$('search7').oninput=()=>{if(section==='allenatori_schede7')allenatori7Render();else renderDataTable();};
+$('search7').oninput=()=>{if(section==='allenatori_schede7')allenatori7Render();else if(section==='autisti_schede7')autisti7Render();else renderDataTable();};
 (async()=>{
  cfg=normalizeConfig(PUBLIC_SUPABASE_URL,PUBLIC_SUPABASE_KEY);
  const existing=sessionStorage.getItem(SESSION_KEY);
