@@ -2443,6 +2443,75 @@ async function mostraCreditiAtleta7(area,atleta){
  }
  await aggiorna();
 }
+
+/* Accesso atleta: flusso dedicato nella scheda individuale, non nella lista inviti.
+   Un adulto autorizzato della Segreteria conferma e richiede l'invito dalla Edge Function.
+   Nessuna autorizzazione e' affidata al solo codice HTML. */
+async function mostraAccessoPersonaleAtleta7(area, atleta){
+ if(role!=='segreteria')return;
+ const panel=text('div','','wide7 stat7');
+ panel.style.marginTop='14px';
+ panel.style.padding='14px';
+ panel.append(text('h3','🔐 Accesso personale atleta'));
+ if(!atleta?.id){
+  panel.append(text('p','Salva prima la scheda dell’atleta. L’accesso personale si può attivare solo su una scheda già registrata.','muted7'));
+  area.append(panel);return;
+ }
+ const nota=text('p','L’atleta normalmente accede tramite il genitore. Questo invito personale è eccezionale e non passa dalla lista generale degli inviti.','muted7');
+ panel.append(nota);
+ const stato=text('p','Controllo dello stato di accesso…','muted7');
+ stato.setAttribute('role','status');panel.append(stato);
+ const modulo=document.createElement('div');modulo.className='inputrow';
+ const lab=document.createElement('label');lab.append(text('span','Email personale dell’atleta'));
+ const email=document.createElement('input');email.type='email';email.autocomplete='email';email.placeholder='nome@esempio.it';email.maxLength=250;
+ email.setAttribute('aria-label','Email per accesso personale di '+formatLabel('atleti',atleta));lab.append(email);modulo.append(lab);
+ const autorizzazione=document.createElement('label');
+ autorizzazione.style.display='flex';autorizzazione.style.gap='8px';autorizzazione.style.alignItems='flex-start';autorizzazione.style.margin='10px 0';
+ const conferma=document.createElement('input');conferma.type='checkbox';conferma.style.width='auto';conferma.style.marginTop='3px';
+ autorizzazione.append(conferma,text('span','Confermo che la Segreteria è autorizzata ad attivare l’accesso personale e, se l’atleta è minorenne, che è stata acquisita l’autorizzazione del genitore o tutore.'));
+ const azione=text('button','✉ Attiva accesso atleta','red7');azione.type='button';azione.disabled=true;
+ const esito=text('small','La scheda dell’atleta non verrà modificata. L’invito sarà inviato solo dopo la conferma.','muted7');
+ esito.style.display='block';esito.style.marginTop='10px';
+ panel.append(modulo,autorizzazione,azione,esito);area.append(panel);
+ let collegato=false,verificato=false,inCorso=false;
+ function abilita(){azione.disabled=!verificato||collegato||inCorso||!conferma.checked||!inviti7EmailValida(inviti7Mail(email.value));}
+ conferma.onchange=abilita;email.oninput=abilita;
+ try{
+  await ensureFresh();
+  const controllo=await rawReq('/rest/v1/rpc/settek_stato_accesso_atleta',{method:'POST',body:{p_atleta_id:atleta.id}});
+  // PostgREST restituisce un booleano JSON per funzioni con valore scalare.
+  if(typeof controllo!=='boolean')throw Error('Formato controllo account non valido');
+  verificato=true;collegato=controllo;
+  stato.textContent=collegato?'Accesso personale già collegato a un account. Non inviare un secondo invito.':'Nessun account personale collegato: puoi inviare un invito autorizzato.';
+  if(collegato){modulo.style.display='none';autorizzazione.style.display='none';azione.style.display='none';}
+  abilita();
+ }catch(e){
+  stato.textContent='Accesso personale non disponibile: manca la verifica Supabase ('+e.message+'). Nessun invito può essere inviato.';
+  modulo.style.display='none';autorizzazione.style.display='none';azione.style.display='none';
+  return;
+ }
+ azione.onclick=async()=>{
+  if(!verificato||collegato||inCorso||role!=='segreteria'||section!=='atleti'||currentEdit?.id!==atleta.id)return;
+  const indirizzo=inviti7Mail(email.value);
+  if(!inviti7EmailValida(indirizzo)||!conferma.checked)return;
+  if(!confirm('CONFERMI L’INVITO PERSONALE ALL’ATLETA?\n\n'+formatLabel('atleti',atleta)+'\nEmail: '+indirizzo+'\n\nQuesto invito assegnerà il ruolo Atleta e collegherà il login soltanto a questa scheda.'))return;
+  inCorso=true;abilita();stato.textContent='Richiesta di invito in corso…';
+  try{
+   await ensureFresh();
+   const response=await fetch(cfg.url+'/functions/v1/invita-atleta-personale',{
+    method:'POST',headers:{'Content-Type':'application/json','apikey':cfg.key,'Authorization':'Bearer '+session.access_token},
+    body:JSON.stringify({atleta_id:atleta.id,email:indirizzo,conferma_autorizzazione:true})
+   });
+   const bodyText=await response.text();let body={};try{body=JSON.parse(bodyText)}catch{body={message:bodyText}}
+   if(!response.ok||body?.success!==true)throw Error(String(body?.errore||body?.error||body?.message||'HTTP '+response.status).slice(0,250));
+   collegato=true;stato.textContent='Richiesta accettata da Supabase. Account atleta collegato: controlla che l’email sia stata consegnata.';
+   modulo.style.display='none';autorizzazione.style.display='none';azione.style.display='none';
+   notify('Invito personale atleta accettato. Controlla la consegna dell’email.','good');
+  }catch(e){stato.textContent='Invito non confermato: '+e.message+'. Controlla Supabase prima di riprovare.';notify('Accesso atleta: '+e.message,'error');}
+  finally{inCorso=false;abilita();}
+ };
+}
+
 async function buildForm(t,record){
  if(t==='allenamenti' && record?.data<calendario7Oggi()){notify('Un allenamento passato non può essere modificato.','error');return;}
  if(!canCreate(SCHEMA[t]))return;
@@ -2544,6 +2613,7 @@ async function buildForm(t,record){
    notaGenitori.textContent='Associazioni non disponibili: '+e.message+'. Usa Collega genitori e atleti per gestirle.';
   }
  }
+ if(t==='atleti'&&role==='segreteria')await mostraAccessoPersonaleAtleta7(area,record);
  if(t==='atleti'&&role==='segreteria')await mostraCreditiAtleta7(area,record);
  if(t==='atleti'&&role==='segreteria')await mostraFinanzeAtleta7(area,record);
  $('saveRecord7').textContent=record?'Salva modifiche su Supabase':'Inserisci su Supabase';
