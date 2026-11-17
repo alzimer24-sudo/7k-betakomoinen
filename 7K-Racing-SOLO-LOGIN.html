@@ -2125,6 +2125,9 @@ async function attivaPianiGruppo7(gruppo,membri,bottone){
 // Uscite e crediti: il database ha già una vista crediti_uscite.
 // L'importo è in NUMERO DI USCITE, non in euro; non confondere con saldo quote.
 // La vista conta le uscite utilizzate registrate contro i pacchetti.
+// Riepilogo stagionale: crediti previsti dal nome del gruppo, presenze confermate
+// e (se esistono) crediti effettivamente registrati nella vista Supabase.
+// Nessuna scrittura: non creare pacchetti artificiali o movimenti di pagamento.
 async function mostraCreditiAtleta7(area,atleta){
  if(role!=='segreteria')return;
  const panel=document.createElement('section');panel.className='atleta7-uscite';
@@ -2134,36 +2137,83 @@ async function mostraCreditiAtleta7(area,atleta){
   corpo.append(text('p','Salva prima la scheda dell’atleta per vedere il riepilogo uscite.','muted7'));
   return;
  }
+ const aggiungiContatori=(valori)=>{
+  const contatori=document.createElement('div');contatori.className='atleta7-contatori';
+  for(const [val,lab] of valori){
+   const carta=document.createElement('div');carta.className='atleta7-contatore';
+   carta.append(text('strong',val),text('span',lab));contatori.append(carta);
+  }
+  corpo.append(contatori);
+ };
+ const valido=()=>panel.isConnected&&section==='atleti'&&currentEdit?.id===atleta.id;
  async function aggiorna(){
-  corpo.replaceChildren(text('p','Caricamento crediti uscite…','muted7'));
+  corpo.replaceChildren(text('p','Caricamento uscite e crediti…','muted7'));
+  const sezioni=[];
+  try{
+   if(!atleta.gruppo_id){
+    sezioni.push(text('p','L’atleta non è ancora assegnato a un gruppo.','muted7'));
+   }else{
+    // Un gruppo 20 USCITE, 35 USCITE, ecc. indica le uscite comprese nel corso.
+    const gruppoRighe=await rest('gruppi',{filter:readQuery({select:'id,nome',id:'eq.'+atleta.gruppo_id,limit:'1'})});
+    const gruppo=gruppoRighe[0];
+    const match=/^\s*(\d+)\s+USCITE\b/i.exec(gruppo?.nome||'');
+    if(!match){
+     sezioni.push(text('p','Numero di uscite non ricavabile dal nome del gruppo: controlla il corso assegnato.','muted7'));
+    }else{
+     const previste=Number(match[1]);
+     if(!Number.isSafeInteger(previste)||previste<=0)throw Error('Numero di uscite del gruppo non valido.');
+     const presenze=await rest('presenze_allenamenti',{filter:readQuery({
+      select:'allenamento_id',atleta_id:'eq.'+atleta.id,presente:'eq.true',limit:'1000'
+     })});
+     if(presenze.length>=1000)throw Error('Troppe presenze: conteggio incompleto.');
+     const idsPresenti=new Set(presenze.map(p=>p.allenamento_id).filter(Boolean));
+     let utilizzate=0;
+     if(idsPresenti.size){
+      const allenamenti=await rest('allenamenti',{filter:readQuery({
+       select:'id',gruppo_id:'eq.'+atleta.gruppo_id,limit:'1000'
+      })});
+      if(allenamenti.length>=1000)throw Error('Troppi allenamenti nel gruppo: conteggio incompleto.');
+      utilizzate=allenamenti.filter(a=>idsPresenti.has(a.id)).length;
+     }
+     const residue=previste-utilizzate;
+     sezioni.push({tipo:'contatori',dati:[
+      [previste,'Uscite previste dal gruppo'],
+      [utilizzate,'Uscite utilizzate'],
+      [residue,'Uscite residue']
+     ]});
+     sezioni.push(text('small','Calcolo dal gruppo «'+gruppo.nome+'» e dalle presenze confermate negli allenamenti del gruppo. Non crea addebiti né pacchetti.'));
+     if(residue<0)sezioni.push(text('p','Attenzione: uscite utilizzate superiori a quelle previste.','atleta7-warning'));
+    }
+   }
+  }catch(e){sezioni.push(text('p','Conteggio del gruppo non disponibile: '+e.message,'atleta7-warning'));}
+  // I pacchetti extra acquistati restano distinti dalle uscite comprese nel corso.
   try{
    const righe=await rest('crediti_uscite',{filter:readQuery({
     select:'pacchetto_id,atleta_id,descrizione,uscite_acquistate,uscite_utilizzate,crediti_residui',
     atleta_id:'eq.'+atleta.id,limit:'1000'
    })});
-   if(!panel.isConnected||section!=='atleti'||currentEdit?.id!==atleta.id)return;
-   if(righe.length>=1000)throw Error('Troppi pacchetti da visualizzare: riepilogo parziale, controlla i dati.');
-   corpo.replaceChildren();
-   if(!righe.length){
-    corpo.append(text('p','Nessun pacchetto uscite registrato per questo atleta. I crediti non sono ancora calcolabili.','muted7'));
-   }else{
+   if(righe.length>=1000)throw Error('Troppi pacchetti per un riepilogo affidabile.');
+   if(righe.length){
     const totale=righe.reduce((a,r)=>a+Number(r.uscite_acquistate||0),0);
     const utilizzate=righe.reduce((a,r)=>a+Number(r.uscite_utilizzate||0),0);
     const residue=righe.reduce((a,r)=>a+Number(r.crediti_residui||0),0);
-    if(![totale,utilizzate,residue].every(Number.isFinite))throw Error('La vista contiene conteggi non numerici.');
-    const contatori=document.createElement('div');contatori.className='atleta7-contatori';
-    for(const [val,lab] of [[totale,'Uscite acquistate'],[utilizzate,'Uscite utilizzate'],[residue,'Crediti residui']]){
-     const carta=document.createElement('div');carta.className='atleta7-contatore';
-     carta.append(text('strong',val),text('span',lab));contatori.append(carta);
-    }
-    corpo.append(contatori);
-    if(residue<0)corpo.append(text('p','Attenzione: saldo uscite negativo, verificare i movimenti.','atleta7-warning'));
-    if(righe.length>1)corpo.append(text('small','Totale calcolato su '+righe.length+' pacchetti associati all’atleta.'));
+    if(![totale,utilizzate,residue].every(Number.isFinite))throw Error('Valori non numerici nella vista crediti.');
+    sezioni.push(text('h4','Pacchetti uscite registrati (separati dal gruppo)'));
+    sezioni.push({tipo:'contatori',dati:[
+     [totale,'Uscite acquistate'],[utilizzate,'Uscite utilizzate da pacchetti'],[residue,'Crediti residui da pacchetti']
+    ]});
+    if(residue<0)sezioni.push(text('p','Attenzione: saldo pacchetti negativo.','atleta7-warning'));
    }
-   corpo.append(text('small','Dati dalla vista Supabase “Crediti residui”: uscite registrate nei pacchetti e uscite utilizzate. Non sono importi in euro e non vengono scalate automaticamente dalle presenze agli allenamenti.'));
-   const aggiornaBtn=text('button','↻ Aggiorna conteggi');aggiornaBtn.type='button';aggiornaBtn.style.marginTop='10px';
-   aggiornaBtn.onclick=()=>void aggiorna();corpo.append(aggiornaBtn);
-  }catch(e){corpo.replaceChildren(text('p','Crediti uscite non disponibili: '+e.message,'atleta7-warning'));}
+  }catch(e){sezioni.push(text('p','Pacchetti non disponibili: '+e.message,'atleta7-warning'));}
+  if(!valido())return;
+  corpo.replaceChildren();
+  for(const elemento of sezioni){
+   if(elemento?.tipo==='contatori')aggiungiContatori(elemento.dati);
+   else corpo.append(elemento);
+  }
+  corpo.append(text('small','Le uscite del corso sono un conteggio da gruppo e presenze, non un saldo economico. Eventuali pacchetti aggiuntivi si leggono separatamente dal database.'));
+  const aggiornaBtn=text('button','↻ Aggiorna conteggi');aggiornaBtn.type='button';aggiornaBtn.style.marginTop='10px';
+  aggiornaBtn.onclick=()=>void aggiorna();corpo.append(aggiornaBtn);
  }
  await aggiorna();
 }
